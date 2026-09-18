@@ -1,0 +1,164 @@
+// Anas Ledger — MySQL schema.
+// Local UI currently runs on demo data. Do not point this at production yet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentMethod {
+  CASH
+  EASYPAISA
+  BANK_TRANSFER
+  JAZZCASH
+  OTHER
+}
+
+enum PaymentKind {
+  RECEIVED
+  REFUND
+}
+
+enum ReceivableStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ExpenseCategory {
+  SUPPLIES
+  MAINTENANCE
+  UTILITIES
+  LABOR
+  TRANSPORT
+  OTHER
+}
+
+enum NotificationType {
+  OVERDUE
+  DUE_TODAY
+  DUE_TOMORROW
+  PAYMENT_RECEIVED
+  EXPENSE
+  SYSTEM
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  name      String
+  phone     String?
+  notes     String?  @db.Text
+
+  receivables   Receivable[]
+  payments      Payment[]
+  reminders     Reminder[]
+  notifications Notification[]
+
+  @@index([name])
+}
+
+model Receivable {
+  id          String            @id @default(cuid())
+  createdAt   DateTime          @default(now())
+  clientId    String
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  totalAmount Int
+  description String
+  flat        String?
+  dueDate     DateTime
+  status      ReceivableStatus  @default(PENDING)
+  notes       String?           @db.Text
+  snoozedUntil DateTime?
+
+  payments      Payment[]
+  reminders     Reminder[]
+  notifications Notification[]
+
+  @@index([clientId])
+  @@index([dueDate])
+  @@index([status])
+  @@index([flat])
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  createdAt    DateTime      @default(now())
+  receivedAt   DateTime
+  clientId     String
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  receivableId String?
+  receivable   Receivable?   @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+  amount       Int
+  method       PaymentMethod
+  kind         PaymentKind   @default(RECEIVED)
+  notes        String?       @db.Text
+
+  @@index([clientId])
+  @@index([receivableId])
+  @@index([receivedAt])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  createdAt   DateTime        @default(now())
+  spentAt     DateTime
+  amount      Int
+  category    ExpenseCategory
+  description String
+  method      PaymentMethod
+  flat        String?
+  notes       String?         @db.Text
+
+  @@index([spentAt])
+  @@index([category])
+  @@index([flat])
+}
+
+model Reminder {
+  id           String      @id @default(cuid())
+  createdAt    DateTime    @default(now())
+  clientId     String
+  client       Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  receivableId String?
+  receivable   Receivable? @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+  dueDate      DateTime
+  snoozedUntil DateTime?
+  note         String?     @db.Text
+
+  @@index([clientId])
+  @@index([dueDate])
+}
+
+model Notification {
+  id           String           @id @default(cuid())
+  createdAt    DateTime         @default(now())
+  type         NotificationType
+  title        String
+  body         String           @db.Text
+  isRead       Boolean          @default(false)
+  clientId     String?
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  receivableId String?
+  receivable   Receivable?      @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  action     String
+  entityType String
+  entityId   String
+  summary    String   @db.Text
+
+  @@index([createdAt])
+}
