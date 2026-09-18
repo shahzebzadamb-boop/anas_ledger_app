@@ -6,9 +6,9 @@ export function PageHeader({
   subtitle?: string;
 }) {
   return (
-    <header className="mb-5">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
+    <header className="mb-4">
+      <h1 className="page-title">{title}</h1>
+      {subtitle ? <p className="mt-1 text-sm font-normal text-muted">{subtitle}</p> : null}
     </header>
   );
 }

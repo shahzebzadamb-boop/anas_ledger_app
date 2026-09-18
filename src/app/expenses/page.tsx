@@ -5,30 +5,33 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/dates";
+import { flatName } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/types";
 
 export default function ExpensesPage() {
-  const { state, dispatch } = useLedger();
+  const { state, persist } = useLedger();
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].value);
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
-  const [flat, setFlat] = useState("");
+  const [flat, setFlat] = useState(state.flats[0]?.name ?? "");
 
-  const expenses = [...state.expenses].sort((a, b) =>
-    a.spentAt < b.spentAt ? 1 : -1,
-  );
+  const expenses = [...state.expenses].sort((a, b) => (a.spentAt < b.spentAt ? 1 : -1));
+  const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Expenses" subtitle="Money spent by the business." />
+      <PageHeader title="Expenses" subtitle="Business costs only. Not Anas withdrawals." />
+      <Card className="p-3">
+        <p className="card-label">Total</p>
+        <p className="money mt-1.5 text-xl">{formatPKR(total)}</p>
+      </Card>
       <Card className="space-y-3">
-        <h2 className="font-medium">Add expense</h2>
         <input
           placeholder="Description"
-          className="w-full rounded-xl border border-border px-3"
+          className="w-full rounded-xl border border-border bg-input px-3 text-base"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />
@@ -36,74 +39,67 @@ export default function ExpensesPage() {
           type="number"
           min={1}
           placeholder="Amount"
-          className="w-full rounded-xl border border-border px-3"
+          className="w-full rounded-xl border border-border bg-input px-3 text-base"
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
         />
-        <select
-          className="w-full rounded-xl border border-border bg-surface px-3"
-          value={category}
-          onChange={(event) => setCategory(event.target.value as typeof category)}
-        >
+        <select className="w-full rounded-xl border border-border bg-input px-3 text-base" value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
           {EXPENSE_CATEGORIES.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
+            <option key={item.value} value={item.value}>{item.label}</option>
           ))}
         </select>
-        <select
-          className="w-full rounded-xl border border-border bg-surface px-3"
-          value={method}
-          onChange={(event) => setMethod(event.target.value as typeof method)}
-        >
+        <select className="w-full rounded-xl border border-border bg-input px-3 text-base" value={method} onChange={(event) => setMethod(event.target.value as typeof method)}>
           {PAYMENT_METHODS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
+            <option key={item.value} value={item.value}>{item.label}</option>
           ))}
         </select>
-        <input
-          placeholder="Optional flat"
-          className="w-full rounded-xl border border-border px-3"
-          value={flat}
-          onChange={(event) => setFlat(event.target.value)}
-        />
+        <select className="w-full rounded-xl border border-border bg-input px-3 text-base" value={flat} onChange={(event) => setFlat(event.target.value)}>
+          {state.flats.map((item) => (
+            <option key={item.id} value={item.name}>{item.name}</option>
+          ))}
+        </select>
         <Button
           variant="primary"
           className="w-full"
           onClick={() => {
             const value = Number(amount);
             if (!value || !description.trim()) return;
-            dispatch({
+            void persist({
               type: "ADD_EXPENSE",
-              payload: {
-                amount: value,
-                description: description.trim(),
-                category,
-                method,
-                flat: flat.trim() || null,
-              },
+              payload: { amount: value, description: description.trim(), category, method, flat },
+            }).then(() => {
+              setAmount("");
+              setDescription("");
             });
-            setAmount("");
-            setDescription("");
-            setFlat("");
           }}
         >
           Save expense
         </Button>
       </Card>
-      {expenses.map((expense) => (
-        <Card key={expense.id} className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-medium">{expense.description}</p>
-            <p className="mt-1 text-sm text-muted">
-              {expense.category.toLowerCase()} · {methodLabel(expense.method)} · {formatDate(expense.spentAt)}
-              {expense.flat ? ` · Flat ${expense.flat}` : ""}
-            </p>
-          </div>
-          <p className="font-semibold">{formatPKR(expense.amount)}</p>
-        </Card>
-      ))}
+      {expenses.length === 0 ? (
+        <p className="text-sm font-normal text-muted">No expenses yet.</p>
+      ) : (
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+        {expenses.map((expense) => {
+          const tag = EXPENSE_CATEGORIES.find((item) => item.value === expense.category)?.label ?? expense.category;
+          return (
+            <div key={expense.id} className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+              <div className="min-w-0">
+                <p className="font-medium">{expense.description}</p>
+                <p className="mt-1 text-sm font-normal text-muted">
+                  {methodLabel(expense.method)} · {formatDate(expense.spentAt)}
+                  {expense.flatId ? ` · Flat ${flatName(state, expense.flatId)}` : ""}
+                </p>
+                <span className="mt-1.5 inline-flex rounded-full bg-input px-2 py-0.5 text-[11px] font-medium text-secondary">
+                  {tag}
+                </span>
+              </div>
+              <p className="money shrink-0 text-sm">{formatPKR(expense.amount)}</p>
+            </div>
+          );
+        })}
+      </div>
+      )}
     </div>
   );
 }

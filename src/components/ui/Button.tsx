@@ -15,11 +15,11 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-foreground text-white",
-        variant === "secondary" && "border border-border bg-surface text-foreground",
-        variant === "ghost" && "bg-transparent text-foreground",
-        variant === "danger" && "bg-danger text-white",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "primary" && "bg-primary text-on-primary",
+        variant === "secondary" && "border border-border bg-input text-foreground",
+        variant === "ghost" && "bg-transparent text-secondary",
+        variant === "danger" && "bg-danger text-foreground",
         className,
       )}
       {...props}

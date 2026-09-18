@@ -8,42 +8,42 @@ import { formatPKR } from "@/lib/money";
 
 export function RecordPaymentModal({
   clientId,
-  receivableId,
+  stayId,
   remaining,
   clientName,
   onClose,
 }: {
   clientId: string;
-  receivableId: string;
+  stayId: string;
   remaining: number;
   clientName: string;
   onClose: () => void;
 }) {
-  const { dispatch } = useLedger();
+  const { persist } = useLedger();
   const [amount, setAmount] = useState(String(remaining));
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-      <div className="w-full max-w-lg rounded-2xl bg-surface p-4">
-        <h3 className="text-lg font-semibold">Record payment</h3>
-        <p className="mt-1 text-sm text-muted">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-4">
+        <h3 className="section-title">Record payment</h3>
+        <p className="mt-1 text-sm font-normal text-muted">
           {clientName} · remaining {formatPKR(remaining)}
         </p>
-        <label className="mt-4 block text-sm">
+        <label className="mt-4 block text-sm font-medium">
           Amount
           <input
             type="number"
             min={1}
-            className="mt-1 w-full rounded-xl border border-border px-3"
+            className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
           />
         </label>
-        <label className="mt-3 block text-sm">
+        <label className="mt-3 block text-sm font-medium">
           Method
           <select
-            className="mt-1 w-full rounded-xl border border-border bg-surface px-3"
+            className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base"
             value={method}
             onChange={(event) => setMethod(event.target.value as typeof method)}
           >
@@ -61,19 +61,13 @@ export function RecordPaymentModal({
             onClick={() => {
               const value = Number(amount);
               if (!value || value <= 0) return;
-              dispatch({
+              void persist({
                 type: "RECORD_PAYMENT",
-                payload: {
-                  clientId,
-                  receivableId,
-                  amount: value,
-                  method,
-                },
-              });
-              onClose();
+                payload: { clientId, stayId, amount: value, method },
+              }).then(() => onClose());
             }}
           >
-            Save
+            Confirm
           </Button>
         </div>
       </div>

@@ -5,30 +5,22 @@ export type PaymentMethod =
   | "JAZZCASH"
   | "OTHER";
 
-export type PaymentKind = "RECEIVED" | "REFUND";
-
-export type ReceivableStatus =
-  | "PENDING"
-  | "PARTIAL"
-  | "PAID"
-  | "OVERDUE"
-  | "CANCELLED";
-
 export type ExpenseCategory =
-  | "SUPPLIES"
+  | "CLEANING"
+  | "GROCERIES"
+  | "ELECTRICITY"
+  | "GAS"
+  | "INTERNET"
   | "MAINTENANCE"
-  | "UTILITIES"
-  | "LABOR"
-  | "TRANSPORT"
+  | "PLUMBING"
+  | "REPAIRS"
+  | "FURNITURE"
+  | "BEDSHEETS_LINEN"
+  | "SUPPLIES"
+  | "STAFF"
+  | "COMMISSION"
+  | "WATER"
   | "OTHER";
-
-export type NotificationType =
-  | "OVERDUE"
-  | "DUE_TODAY"
-  | "DUE_TOMORROW"
-  | "PAYMENT_RECEIVED"
-  | "EXPENSE"
-  | "SYSTEM";
 
 export type DateFilterPreset = "today" | "7days" | "month" | "custom";
 
@@ -37,73 +29,97 @@ export type DateRange = {
   to: Date;
 };
 
+export type Flat = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
 export type Client = {
   id: string;
   createdAt: string;
   name: string;
   phone: string | null;
+  phoneMissing: boolean;
   notes: string | null;
 };
 
-export type Receivable = {
+export type Stay = {
   id: string;
   createdAt: string;
+  flatId: string;
   clientId: string;
-  totalAmount: number;
-  description: string;
-  flat: string | null;
-  dueDate: string;
-  status: ReceivableStatus;
-  notes: string | null;
-  snoozedUntil: string | null;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  notifyEnabled: boolean;
+  activePending: boolean;
+  importKey: string | null;
+};
+
+export type RentEntry = {
+  id: string;
+  stayId: string;
+  clientId: string;
+  flatId: string;
+  amount: number;
+  occurredAt: string;
+  note: string | null;
 };
 
 export type Payment = {
   id: string;
   createdAt: string;
-  receivedAt: string;
+  stayId: string | null;
   clientId: string;
-  receivableId: string | null;
+  flatId: string | null;
   amount: number;
   method: PaymentMethod;
-  kind: PaymentKind;
+  receivedAt: string;
   notes: string | null;
 };
 
 export type Expense = {
   id: string;
   createdAt: string;
-  spentAt: string;
+  flatId: string | null;
   amount: number;
   category: ExpenseCategory;
   description: string;
   method: PaymentMethod;
-  flat: string | null;
+  spentAt: string;
   notes: string | null;
 };
 
-export type Reminder = {
+export type SecurityTransaction = {
   id: string;
-  createdAt: string;
   clientId: string;
-  receivableId: string | null;
-  dueDate: string;
-  snoozedUntil: string | null;
+  stayId: string | null;
+  flatId: string | null;
+  kind: "RECEIVED" | "ADJUSTED_TO_RENT";
+  amount: number;
+  occurredAt: string;
+  notes: string | null;
+};
+
+export type Discount = {
+  id: string;
+  stayId: string;
+  clientId: string;
+  flatId: string;
+  amount: number;
+  occurredAt: string;
   note: string | null;
 };
 
-export type AppNotification = {
+export type Withdrawal = {
   id: string;
-  createdAt: string;
-  type: NotificationType;
-  title: string;
-  body: string;
-  isRead: boolean;
-  clientId: string | null;
-  receivableId: string | null;
+  amount: number;
+  occurredAt: string;
+  note: string | null;
 };
 
-export type AuditLog = {
+export type ActivityLog = {
   id: string;
   createdAt: string;
   action: string;
@@ -112,52 +128,108 @@ export type AuditLog = {
   summary: string;
 };
 
-export type LedgerState = {
-  clients: Client[];
-  receivables: Receivable[];
-  payments: Payment[];
-  expenses: Expense[];
-  reminders: Reminder[];
-  notifications: AppNotification[];
-  auditLogs: AuditLog[];
+export type AuditLog = {
+  id: string;
+  createdAt: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  originalValue: string | null;
+  newValue: string | null;
+  reason: string | null;
 };
 
-export type AttentionUrgency = "overdue" | "today" | "tomorrow";
+export type MigrationStatus = "NEEDS_REVIEW" | "CONFIRMED" | "IGNORED";
+export type PendingDecision = "UNDECIDED" | "STILL_PENDING" | "ALREADY_PAID" | "IGNORE";
+
+export type MigrationRecord = {
+  id: string;
+  sourceFile: string;
+  sourceSheet: string;
+  sourceRow: number;
+  sourceText: string;
+  flatName: string;
+  customer: string | null;
+  date: string | null;
+  month: string | null;
+  proposedType: string;
+  amount: number | null;
+  reason: string;
+  status: MigrationStatus;
+  pendingDecision: PendingDecision;
+  stayId: string | null;
+  currentInterpretation: string;
+  previousInterpretation: string | null;
+  lastQuickUpdate: string | null;
+  originalValue: string | null;
+  correctionText: string | null;
+  importedAt: string | null;
+  updatedAt: string | null;
+};
+
+export type ReminderSilence = {
+  clientId: string;
+  cycleDate: string;
+};
+
+export type LedgerState = {
+  flats: Flat[];
+  clients: Client[];
+  stays: Stay[];
+  rentEntries: RentEntry[];
+  payments: Payment[];
+  expenses: Expense[];
+  security: SecurityTransaction[];
+  discounts: Discount[];
+  withdrawals: Withdrawal[];
+  reviews: MigrationRecord[];
+  activityLogs: ActivityLog[];
+  auditLogs: AuditLog[];
+  reminderSilences: ReminderSilence[];
+  nightSummaryDates: string[];
+};
+
+export type DashboardTotals = {
+  business: number;
+  received: number;
+  pending: number;
+  expenses: number;
+};
 
 export type AttentionItem = {
-  receivableId: string;
+  stayId: string;
   clientId: string;
   clientName: string;
   phone: string | null;
   remaining: number;
-  dueDate: string;
-  overdueDays: number;
-  flat: string | null;
-  urgency: AttentionUrgency;
-  description: string;
-};
-
-export type DashboardTotals = {
-  received: number;
-  pending: number;
-  expenses: number;
-  refunds: number;
-  netCash: number;
+  flat: string;
+  checkOut: string;
 };
 
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "CASH", label: "Cash" },
   { value: "EASYPAISA", label: "Easypaisa" },
-  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+  { value: "BANK_TRANSFER", label: "Bank" },
   { value: "JAZZCASH", label: "JazzCash" },
   { value: "OTHER", label: "Other" },
 ];
 
 export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
-  { value: "SUPPLIES", label: "Supplies" },
+  { value: "CLEANING", label: "Cleaning" },
+  { value: "GROCERIES", label: "Groceries" },
+  { value: "ELECTRICITY", label: "Electricity" },
+  { value: "GAS", label: "Gas" },
+  { value: "INTERNET", label: "Internet" },
   { value: "MAINTENANCE", label: "Maintenance" },
-  { value: "UTILITIES", label: "Utilities" },
-  { value: "LABOR", label: "Labor" },
-  { value: "TRANSPORT", label: "Transport" },
+  { value: "PLUMBING", label: "Plumbing" },
+  { value: "REPAIRS", label: "Repairs" },
+  { value: "FURNITURE", label: "Furniture" },
+  { value: "BEDSHEETS_LINEN", label: "Bedsheets / Linen" },
+  { value: "SUPPLIES", label: "Supplies" },
+  { value: "STAFF", label: "Staff" },
+  { value: "COMMISSION", label: "Commission" },
+  { value: "WATER", label: "Water" },
   { value: "OTHER", label: "Other" },
 ];
+
+export const FLAT_NAMES = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;

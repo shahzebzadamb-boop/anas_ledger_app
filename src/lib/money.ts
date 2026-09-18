@@ -9,9 +9,18 @@ export function formatPKR(amount: number): string {
 }
 
 export function parseAmountToken(token: string): number | null {
-  const cleaned = token.replace(/,/g, "").toLowerCase().replace(/^rs\.?/, "");
+  const cleaned = token
+    .replace(/,/g, "")
+    .toLowerCase()
+    .replace(/^rs\.?/, "")
+    .trim();
+
+  const lac = cleaned.match(/^(\d+(?:\.\d+)?)\s*(?:lac|lakh)s?$/);
+  if (lac) return Math.round(Number(lac[1]) * 100000);
+
   const withK = cleaned.match(/^(\d+(?:\.\d+)?)k$/);
   if (withK) return Math.round(Number(withK[1]) * 1000);
+
   if (/^\d+(?:\.\d+)?$/.test(cleaned)) return Math.round(Number(cleaned));
   return null;
 }
@@ -28,7 +37,7 @@ export function methodLabel(method: string): string {
     case "EASYPAISA":
       return "Easypaisa";
     case "BANK_TRANSFER":
-      return "Bank Transfer";
+      return "Bank";
     case "JAZZCASH":
       return "JazzCash";
     default:

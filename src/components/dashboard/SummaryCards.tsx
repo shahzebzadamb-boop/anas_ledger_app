@@ -3,40 +3,24 @@ import { formatPKR } from "@/lib/money";
 import type { DashboardTotals } from "@/types";
 
 const cards = [
-  { key: "received", label: "Received", hint: "Cash in" },
-  { key: "pending", label: "Pending From Clients", hint: "Not cash" },
-  { key: "expenses", label: "Expenses", hint: "Cash out" },
-  { key: "netCash", label: "Net Cash", hint: "Received − expenses − refunds" },
+  { key: "business", label: "Business", amountClass: "text-foreground" },
+  { key: "received", label: "Received", amountClass: "text-primary" },
+  { key: "pending", label: "Pending", amountClass: "text-warning" },
+  { key: "expenses", label: "Expenses", amountClass: "text-foreground" },
 ] as const;
 
 export function SummaryCards({ totals }: { totals: DashboardTotals }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {cards.map((card) => {
-        const value = totals[card.key];
-        const isPending = card.key === "pending";
-        const isNegative = card.key === "netCash" && value < 0;
-        return (
-          <Card key={card.key}>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">
-              {card.label}
-            </p>
-            <p
-              className={`mt-2 text-2xl font-semibold ${
-                isNegative ? "text-danger" : "text-foreground"
-              }`}
-            >
-              {formatPKR(value)}
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              {isPending ? `${card.hint} · unpaid balances` : card.hint}
-              {card.key === "netCash" && totals.refunds > 0
-                ? ` · refunds ${formatPKR(totals.refunds)}`
-                : ""}
-            </p>
+    <section className="space-y-2">
+      <h2 className="section-title">Money summary</h2>
+      <div className="grid grid-cols-2 gap-2.5">
+        {cards.map((card) => (
+          <Card key={card.key} className="p-3">
+            <p className="card-label">{card.label}</p>
+            <p className={`money mt-1.5 text-lg ${card.amountClass}`}>{formatPKR(totals[card.key])}</p>
           </Card>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+    </section>
   );
 }

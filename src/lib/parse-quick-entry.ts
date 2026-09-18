@@ -1,24 +1,38 @@
 import { addDays, startOfDay } from "date-fns";
 import { parseAmountToken } from "@/lib/money";
+import { normalizePhone } from "@/lib/phone";
 import type { ExpenseCategory, PaymentMethod } from "@/types";
 
-export type TransactionType = "RENT" | "PAYMENT" | "EXPENSE";
+export type TransactionType =
+  | "RENT"
+  | "PAYMENT"
+  | "EXPENSE"
+  | "SECURITY"
+  | "SECURITY_ADJUSTMENT"
+  | "DISCOUNT"
+  | "STAY_EXTENSION"
+  | "ANAS_WITHDRAWAL";
 
 export type RentDraft = {
   type: "rent";
   clientName: string;
+  phone: string | null;
+  needsPhone: boolean;
   flat: string | null;
+  nights: number;
   totalAmount: number;
   receivedAmount: number;
   remaining: number;
   method: PaymentMethod;
-  dueDate: Date;
-  description: string;
+  checkIn: Date;
+  checkOut: Date;
 };
 
 export type PaymentDraft = {
   type: "payment";
   clientName: string;
+  phone: string | null;
+  flat: string | null;
   amount: number;
   method: PaymentMethod;
 };
@@ -28,86 +42,109 @@ export type ExpenseDraft = {
   amount: number;
   method: PaymentMethod;
   description: string;
-  categoryLabel: string;
   category: ExpenseCategory;
   flat: string | null;
 };
 
-export type ExtractedFields = {
-  clientName: string | null;
+export type SecurityDraft = {
+  type: "security";
+  clientName: string;
+  phone: string | null;
+  needsPhone: boolean;
   flat: string | null;
+  amount: number;
   method: PaymentMethod;
-  amounts: number[];
-  totalAmount: number | null;
-  receivedAmount: number | null;
-  remainingAmount: number | null;
-  dueDate: Date;
 };
 
-export type ParsedQuickEntry =
+export type SecurityAdjustDraft = {
+  type: "security_adjustment";
+  clientName: string;
+  phone: string | null;
+  amount: number;
+};
+
+export type DiscountDraft = {
+  type: "discount";
+  clientName: string;
+  phone: string | null;
+  amount: number;
+};
+
+export type ExtensionDraft = {
+  type: "extension";
+  clientName: string;
+  phone: string | null;
+  flat: string | null;
+  extraNights: number;
+  extraRevenue: number;
+};
+
+export type WithdrawalDraft = {
+  type: "withdrawal";
+  amount: number;
+  note: string | null;
+};
+
+export type ConfirmableDraft =
   | RentDraft
   | PaymentDraft
   | ExpenseDraft
-  | {
-      type: "ambiguous";
-      reason: string;
-      extracted: ExtractedFields;
-    };
+  | SecurityDraft
+  | SecurityAdjustDraft
+  | DiscountDraft
+  | ExtensionDraft
+  | WithdrawalDraft;
+
+export type ParsedQuickEntry =
+  | ConfirmableDraft
+  | { type: "ambiguous"; reason: string };
 
 export type ParseContext = {
-  knownClients?: string[];
+  knownClients?: { name: string; phone: string | null }[];
   now?: Date;
 };
 
+const KNOWN_FLATS = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;
+
+const RECEIVED_RE =
+  /\b(received|receive|recive|recived|wasol|wasool|mila|mil\s+gaya|mil\s+gya|aya|aaya|amount\s+aya|payment\s+aya|paid|full\s+paid|clear|settled|advance)\b/i;
+const PENDING_RE =
+  /\b(pending|remaining|remain|baki|baqi|reh\s+gaya|reh\s+gya|reh\s+gai|remaining\s+hai|balance|bacha|bacha\s+hua)\b/i;
 const EXPENSE_RE =
-  /\b(bought|buy|expense|electricity|gas|internet|cleaning|cleaner|repair|maintenance|bedsheets?|linen|furniture|grocers?y|groceries|supplies|staff|commission|\bac\b|water|bill)\b/i;
+  /\b(expense|kharcha|bill|diya|pay\s+kia|cleaning|safai|safayi|safyai|sofa\s+clean|plumber|plumbing|maintenance|repair|electric|electricity|gas|ptcl|internet|grocery|groceries|bedsheets?|linen|furniture|water|watar|supplies|staff|commission|cleaner|utility|bought|buy)\b/i;
+const DAYS_RE =
+  /\b(\d+)\s*(?:more\s+)?(?:days?|din|nights?|night|raat|nigh)\b/i;
+const WITHDRAW_RE =
+  /\banas\b[\s\S]{0,40}\b(withdraw(?:al)?|nikal(?:a|i)?(?:\s+liya)?|ne\s+liya|liya|nikala)\b|\b(withdraw(?:al)?|nikal(?:a|i)?(?:\s+liya)?|nikala)\b[\s\S]{0,40}\banas\b/i;
+const SECURITY_ADJUST_RE =
+  /\b(adjust|apply|mein|mai)\b[\s\S]{0,40}\b(security|amanat|deposit)\b|\b(security|amanat|deposit)\b[\s\S]{0,40}\b(rent|adjust|apply|mein|mai)\b/i;
+const SECURITY_RE = /\b(security|deposit|amanat)\b/i;
+const DISCOUNT_RE = /\bdiscount\b/i;
+const EXTEND_RE = /\b(extend|more\s+days|din\s+aur|aur\s+extend)\b/i;
+const RENT_RE = /\b(rent|total|booking)\b/i;
 
-const RENT_STRONG_RE = /\b(rent|room|nights?|booking|total)\b/i;
-const DAYS_RE = /\b(\d+)\s+days?\b/i;
-const PAYMENT_RE =
-  /\b(paid|received|another|remaining\s+payment|balance\s+paid)\b/i;
-
-const STOP_WORDS = new Set([
-  "bought",
-  "buy",
-  "paid",
-  "received",
-  "rent",
-  "room",
-  "flat",
-  "total",
-  "due",
-  "cash",
-  "bank",
-  "easypaisa",
-  "jazzcash",
-  "another",
-  "remaining",
-  "balance",
-  "today",
-  "tomorrow",
-  "days",
-  "day",
-  "night",
-  "nights",
-  "booking",
-  "expense",
-  "electricity",
-  "internet",
-  "cleaner",
-  "cleaning",
-  "repair",
-  "bill",
-  "other",
-]);
+const STOP_WORDS = new Set(
+  [
+    "received", "receive", "recive", "recived", "wasol", "wasool", "mila", "mil", "gaya", "gya",
+    "aya", "aaya", "amount", "payment", "paid", "full", "clear", "settled", "advance", "cash",
+    "bank", "easypaisa", "easypisa", "jazzcash", "pending", "remaining", "remain", "baki", "baqi",
+    "reh", "gai", "balance", "bacha", "hua", "expense", "kharcha", "bill", "diya", "pay", "kia",
+    "cleaning", "safai", "safayi", "safyai", "sofa", "clean", "plumber", "plumbing", "maintenance",
+    "repair", "electric", "electricity", "gas", "ptcl", "internet", "grocery", "groceries",
+    "bedsheet", "bedsheets", "linen", "furniture", "water", "watar", "supplies", "staff",
+    "commission", "security", "deposit", "amanat", "adjust", "apply", "rent", "total", "booking",
+    "extend", "more", "days", "day", "din", "night", "nights", "raat", "nigh", "anas", "withdraw",
+    "withdrawal", "nikal", "nikala", "liya", "flat", "ko", "ka", "ki", "ke", "se", "mein", "mai",
+    "ne", "aur", "tha", "thi", "hai", "the", "and", "for", "from", "to", "with", "another",
+    "number", "customer", "guest",
+  ],
+);
 
 const METHOD_PATTERNS: { pattern: RegExp; method: PaymentMethod }[] = [
-  { pattern: /easy\s*paisa/i, method: "EASYPAISA" },
+  { pattern: /easy\s*paisa|easypisa/i, method: "EASYPAISA" },
   { pattern: /jazz\s*cash/i, method: "JAZZCASH" },
-  { pattern: /bank\s*transfer/i, method: "BANK_TRANSFER" },
-  { pattern: /\bbank\b/i, method: "BANK_TRANSFER" },
+  { pattern: /bank\s*transfer|\bbank\b|alfalah/i, method: "BANK_TRANSFER" },
   { pattern: /\bcash\b/i, method: "CASH" },
-  { pattern: /\bother\b/i, method: "OTHER" },
 ];
 
 function detectMethod(text: string): PaymentMethod {
@@ -117,61 +154,80 @@ function detectMethod(text: string): PaymentMethod {
   return "CASH";
 }
 
-function normalizeFlat(value: string): string {
-  return value.replace(/-([a-z])$/i, (_, letter: string) => `-${letter.toUpperCase()}`);
+export function normalizeFlatName(value: string): string {
+  const compact = value.replace(/[\s-]+/g, "").toUpperCase();
+  const match = compact.match(/^(\d{3})([A-Z])$/);
+  if (match) return `${match[1]}-${match[2]}`;
+  return value.replace(/\s+/g, "").replace(/(\d{3})-?([A-Za-z])/i, (_, n, l) => `${n}-${String(l).toUpperCase()}`);
 }
 
-function detectFlat(text: string): string | null {
+export function detectFlat(text: string): string | null {
   const labeled = text.match(/\bflat\s+([A-Za-z0-9-]+)/i);
-  if (labeled?.[1]) return normalizeFlat(labeled[1]);
-
-  const hyphen = text.match(/\b(\d{3}-[A-Za-z])\b/);
-  if (hyphen?.[1]) return normalizeFlat(hyphen[1]);
-
-  const withoutDays = text.replace(/\b\d+\s+days?\b/gi, " ");
-  const triples = withoutDays.match(/\b\d{3}\b/g) ?? [];
-  for (const token of triples) {
-    const value = Number(token);
-    if (value >= 100 && value <= 999) return token;
+  if (labeled?.[1]) {
+    const flat = normalizeFlatName(labeled[1]);
+    if ((KNOWN_FLATS as readonly string[]).includes(flat)) return flat;
+    return flat;
+  }
+  const loose = text.match(/\b(\d{3})\s*-?\s*([A-Za-z])\b/);
+  if (loose) {
+    const flat = normalizeFlatName(`${loose[1]}${loose[2]}`);
+    if ((KNOWN_FLATS as readonly string[]).includes(flat)) return flat;
+    return flat;
   }
   return null;
 }
 
-function detectDueDate(text: string, now: Date): Date {
-  const today = startOfDay(now);
-  if (/\btomorrow\b/i.test(text)) return addDays(today, 1);
-  if (/\bdue\s+today\b/i.test(text)) return today;
-  const days = text.match(DAYS_RE);
-  if (days) return addDays(today, Number(days[1]));
-  return today;
+function detectPhone(text: string): string | null {
+  const match = text.match(/\b(?:\+?92|0)?3\d{9}\b/);
+  return match ? normalizePhone(match[0]) : null;
 }
 
-function detectClient(text: string, knownClients: string[]): string | null {
-  const ranked = [...knownClients].sort((a, b) => b.length - a.length);
-  for (const name of ranked) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\b${escaped}\\b`, "i").test(text)) return name;
+function titleCase(words: string[]): string {
+  return words.map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase()).join(" ");
+}
+
+function detectName(text: string, known: { name: string }[]): string | null {
+  const ranked = [...known].sort((a, b) => b.name.length - a.name.length);
+  for (const client of ranked) {
+    const escaped = client.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b${escaped}\\b`, "i").test(text)) return client.name;
   }
-  const first = text.match(/^([A-Za-z][A-Za-z.'-]*)\b/);
-  if (!first || STOP_WORDS.has(first[1].toLowerCase())) return null;
-  return first[1][0].toUpperCase() + first[1].slice(1).toLowerCase();
+
+  const tokens = text
+    .replace(/\b(?:\+?92|0)?3\d{9}\b/g, " ")
+    .replace(/\b\d{3}\s*-?\s*[A-Za-z]\b/gi, " ")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+
+  for (const client of ranked) {
+    const first = client.name.split(/\s+/)[0]?.toLowerCase();
+    if (first && first.length >= 3 && tokens.includes(first)) {
+      const sameFirst = ranked.filter((item) => item.name.split(/\s+/)[0]?.toLowerCase() === first);
+      if (sameFirst.length === 1) return client.name;
+    }
+  }
+
+  const cleaned = text
+    .replace(/\b(?:\+?92|0)?3\d{9}\b/g, " ")
+    .replace(/\b\d{3}\s*-?\s*[A-Za-z]\b/gi, " ")
+    .replace(/\bflat\b/gi, " ")
+    .replace(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi, " ")
+    .replace(/[^A-Za-z\s.'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned
+    .split(" ")
+    .filter((word) => /^[A-Za-z][A-Za-z.'-]*$/.test(word) && !STOP_WORDS.has(word.toLowerCase()));
+  if (words.length === 0) return null;
+  return titleCase(words.slice(0, 3));
 }
 
-function amountAfter(text: string, keyword: RegExp): number | null {
-  const match = text.match(keyword);
-  if (!match || match.index === undefined) return null;
-  const after = text.slice(match.index + match[0].length);
-  const token = after.match(/rs\.?\s*[\d,]+(?:\.\d+)?k?|[\d,]+(?:\.\d+)?k?/i);
-  if (!token) return null;
-  return parseAmountToken(token[0].replace(/^rs\.?\s*/i, ""));
-}
-
-function extractAmounts(text: string, flat: string | null): number[] {
+function amounts(text: string, flat: string | null): number[] {
   const dayCount = text.match(DAYS_RE)?.[1] ?? null;
   const tokens =
-    text.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)k?/gi) ?? [];
-  const flatNumber = flat ? Number(flat.replace(/-[A-Za-z]$/i, "")) : null;
-
+    text.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
+  const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
   return tokens
     .map((token) => parseAmountToken(token.replace(/^rs\.?\s*/i, "")))
     .filter((value): value is number => {
@@ -182,130 +238,77 @@ function extractAmounts(text: string, flat: string | null): number[] {
     });
 }
 
+function amountAfter(text: string, keyword: RegExp): number | null {
+  const match = text.match(keyword);
+  if (!match || match.index === undefined) return null;
+  const after = text.slice(match.index + match[0].length);
+  const before = text.slice(0, match.index);
+  const afterToken = after.match(/(?:rs\.?\s*)?[\d,]+(?:\.\d+)?(?:k|lac|lakh)?/i);
+  if (afterToken) return parseAmountToken(afterToken[0].replace(/^rs\.?\s*/i, ""));
+  const beforeTokens =
+    before.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
+  const last = beforeTokens.at(-1);
+  return last ? parseAmountToken(last.replace(/^rs\.?\s*/i, "")) : null;
+}
+
 function expenseMeta(text: string): { label: string; category: ExpenseCategory } {
-  if (/bedsheets?|linen/i.test(text)) {
-    return { label: "Bedsheets / Linen", category: "SUPPLIES" };
-  }
-  if (/\bac\b/i.test(text)) return { label: "AC repair", category: "MAINTENANCE" };
-  if (/electricity/i.test(text)) return { label: "Electricity", category: "UTILITIES" };
-  if (/\bgas\b/i.test(text)) return { label: "Gas", category: "UTILITIES" };
-  if (/internet/i.test(text)) return { label: "Internet", category: "UTILITIES" };
-  if (/water/i.test(text)) return { label: "Water", category: "UTILITIES" };
-  if (/clean(?:er|ing)/i.test(text)) return { label: "Cleaning", category: "LABOR" };
-  if (/staff/i.test(text)) return { label: "Staff", category: "LABOR" };
-  if (/commission/i.test(text)) return { label: "Commission", category: "LABOR" };
-  if (/repair/i.test(text)) return { label: "Repair", category: "MAINTENANCE" };
+  if (/sofa/i.test(text)) return { label: "Sofa cleaning", category: "CLEANING" };
+  if (/clean|safai|safayi|safyai/i.test(text)) return { label: "Cleaning", category: "CLEANING" };
+  if (/electric/i.test(text)) return { label: "Electricity", category: "ELECTRICITY" };
+  if (/\bgas\b/i.test(text)) return { label: "Gas", category: "GAS" };
+  if (/ptcl|internet/i.test(text)) return { label: "Internet", category: "INTERNET" };
+  if (/plumb/i.test(text)) return { label: "Plumbing", category: "PLUMBING" };
+  if (/repair/i.test(text)) return { label: "Repairs", category: "REPAIRS" };
   if (/maintenance/i.test(text)) return { label: "Maintenance", category: "MAINTENANCE" };
-  if (/furniture/i.test(text)) return { label: "Furniture", category: "SUPPLIES" };
-  if (/grocers?y|groceries|supplies/i.test(text)) {
-    return { label: "Supplies", category: "SUPPLIES" };
-  }
-  if (/bill/i.test(text)) return { label: "Bill", category: "UTILITIES" };
+  if (/bedsheet|linen/i.test(text)) return { label: "Bedsheets / Linen", category: "BEDSHEETS_LINEN" };
+  if (/furniture/i.test(text)) return { label: "Furniture", category: "FURNITURE" };
+  if (/groc/i.test(text)) return { label: "Groceries", category: "GROCERIES" };
+  if (/staff/i.test(text)) return { label: "Staff", category: "STAFF" };
+  if (/commission/i.test(text)) return { label: "Commission", category: "COMMISSION" };
+  if (/water|watar/i.test(text)) return { label: "Water", category: "WATER" };
+  if (/kharcha|expense|bill/i.test(text)) return { label: "Expense", category: "OTHER" };
   return { label: "Expense", category: "OTHER" };
 }
 
-export function extractFields(text: string, ctx: ParseContext = {}): ExtractedFields {
-  const now = ctx.now ?? new Date();
-  const flat = detectFlat(text);
-  const amounts = extractAmounts(text, flat);
-
-  return {
-    clientName: detectClient(text, ctx.knownClients ?? []),
-    flat,
-    method: detectMethod(text),
-    amounts,
-    totalAmount: amountAfter(text, /\b(?:rent|total)\b/i),
-    receivedAmount: amountAfter(text, /\b(?:received|paid)\b/i),
-    remainingAmount: amountAfter(text, /\bremaining\b/i),
-    dueDate: detectDueDate(text, now),
-  };
+function isWithdrawal(text: string): boolean {
+  if (WITHDRAW_RE.test(text)) return true;
+  return /\banas\b/i.test(text) && /\b(nikal|nikala|liya|withdraw)\b/i.test(text);
 }
 
-function classify(
-  text: string,
-  fields: ExtractedFields,
-  knownClients: string[],
-): TransactionType | "AMBIGUOUS" {
+function classify(text: string): TransactionType | "AMBIGUOUS" {
+  if (isWithdrawal(text)) return "ANAS_WITHDRAWAL";
+  if (SECURITY_ADJUST_RE.test(text)) return "SECURITY_ADJUSTMENT";
+  if (SECURITY_RE.test(text)) return "SECURITY";
+  if (DISCOUNT_RE.test(text)) return "DISCOUNT";
+  if (EXTEND_RE.test(text)) return "STAY_EXTENSION";
+  if (EXPENSE_RE.test(text) && !RECEIVED_RE.test(text) && !RENT_RE.test(text) && !DAYS_RE.test(text)) {
+    return "EXPENSE";
+  }
+  if (EXPENSE_RE.test(text) && !detectName(text, []) && !/\b(received|wasol|wasool|mila|aya)\b/i.test(text)) {
+    return "EXPENSE";
+  }
+  if (RENT_RE.test(text) || DAYS_RE.test(text)) return "RENT";
+  if (RECEIVED_RE.test(text)) return "PAYMENT";
+  if (PENDING_RE.test(text)) return "RENT";
   if (EXPENSE_RE.test(text)) return "EXPENSE";
-  if (RENT_STRONG_RE.test(text) || DAYS_RE.test(text)) return "RENT";
-  if (/\bflat\b/i.test(text) && fields.clientName) return "RENT";
-  if (fields.flat && fields.clientName && fields.amounts.length > 0 && !PAYMENT_RE.test(text)) {
-    return "RENT";
-  }
-
-  const known = Boolean(
-    fields.clientName &&
-      knownClients.some((name) => name.toLowerCase() === fields.clientName?.toLowerCase()),
-  );
-
-  if ((known || fields.clientName) && PAYMENT_RE.test(text) && !RENT_STRONG_RE.test(text)) {
-    return "PAYMENT";
-  }
   return "AMBIGUOUS";
 }
 
-function buildRent(text: string, fields: ExtractedFields): RentDraft | null {
-  const total =
-    fields.totalAmount ??
-    (fields.amounts.length > 1 ? Math.max(...fields.amounts) : fields.amounts[0]);
-  if (!fields.clientName || !total) return null;
-
-  let received = fields.receivedAmount ?? 0;
-  if (received === 0 && fields.amounts.length === 1 && /\b(received|paid)\b/i.test(text)) {
-    received = total;
-  }
-
-  return {
-    type: "rent",
-    clientName: fields.clientName,
-    flat: fields.flat,
-    totalAmount: total,
-    receivedAmount: received,
-    remaining: fields.remainingAmount ?? Math.max(0, total - received),
-    method: fields.method,
-    dueDate: fields.dueDate,
-    description: fields.flat ? `Room rent · Flat ${fields.flat}` : "Room rent",
-  };
+export function isConfirmable(parsed: ParsedQuickEntry): parsed is ConfirmableDraft {
+  return parsed.type !== "ambiguous";
 }
 
-function buildPayment(fields: ExtractedFields): PaymentDraft | null {
-  const amount = fields.receivedAmount ?? fields.amounts[0];
-  if (!fields.clientName || !amount) return null;
-  return {
-    type: "payment",
-    clientName: fields.clientName,
-    amount,
-    method: fields.method,
-  };
+function humanAmbiguous(money: number[], flat: string | null, extra?: string): string {
+  const bits: string[] = [];
+  if (money[0]) bits.push(`Rs ${money[0].toLocaleString("en-PK")}`);
+  if (flat) bits.push(`Flat ${flat}`);
+  if (bits.length && extra) return `I understood ${bits.join(" and ")}. ${extra}`;
+  if (bits.length) return `I understood ${bits.join(" and ")}. Received or Expense?`;
+  return extra ?? "I could not tell if this is rent, a payment, or an expense.";
 }
 
-function buildExpense(text: string, fields: ExtractedFields): ExpenseDraft | null {
-  const amount = fields.amounts[0];
-  if (!amount) return null;
-  const meta = expenseMeta(text);
-  return {
-    type: "expense",
-    amount,
-    method: fields.method,
-    description: meta.label,
-    categoryLabel: meta.label,
-    category: meta.category,
-    flat: fields.flat,
-  };
-}
-
-function ambiguous(extracted: ExtractedFields): ParsedQuickEntry {
-  return {
-    type: "ambiguous",
-    reason: "I couldn't fully understand this entry.",
-    extracted,
-  };
-}
-
-export function isConfirmable(
-  parsed: ParsedQuickEntry,
-): parsed is RentDraft | PaymentDraft | ExpenseDraft {
-  return parsed.type === "rent" || parsed.type === "payment" || parsed.type === "expense";
+function nightsFrom(text: string): number {
+  return Number(text.match(DAYS_RE)?.[1] ?? 0) || 0;
 }
 
 export function parseQuickEntry(
@@ -314,13 +317,123 @@ export function parseQuickEntry(
   forceType?: TransactionType,
 ): ParsedQuickEntry {
   const text = raw.trim().replace(/\s+/g, " ");
-  const fields = extractFields(text, ctx);
-  if (!text) return ambiguous(fields);
+  const now = startOfDay(ctx.now ?? new Date());
+  const flat = detectFlat(text);
+  const phone = detectPhone(text);
+  const clientName = detectName(text, ctx.knownClients ?? []);
+  const money = amounts(text, flat);
+  const method = detectMethod(text);
+  const type = forceType ?? classify(text);
+  const nights = nightsFrom(text) || 1;
 
-  const type = forceType ?? classify(text, fields, ctx.knownClients ?? []);
-  if (type === "EXPENSE") return buildExpense(text, fields) ?? ambiguous(fields);
-  if (type === "RENT") return buildRent(text, fields) ?? ambiguous(fields);
-  if (type === "PAYMENT") return buildPayment(fields) ?? ambiguous(fields);
-  return ambiguous(fields);
+  if (!text) return { type: "ambiguous", reason: "Yahan likho kya hua." };
+
+  if (type === "ANAS_WITHDRAWAL") {
+    const amount = money[0];
+    if (!amount) return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the withdrawal amount.") };
+    return { type: "withdrawal", amount, note: "Anas withdrawal" };
+  }
+
+  if (type === "EXPENSE") {
+    const amount = amountAfter(text, /\b(diya|kharcha|bill|expense|pay\s+kia)\b/i) ?? money[0];
+    if (!amount) return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the expense amount.") };
+    const meta = expenseMeta(text);
+    return {
+      type: "expense",
+      amount,
+      method,
+      description: meta.label,
+      category: meta.category,
+      flat,
+    };
+  }
+
+  if (type === "SECURITY") {
+    const amount = money[0];
+    if (!clientName || !amount) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and security amount.") };
+    }
+    return {
+      type: "security",
+      clientName,
+      phone,
+      needsPhone: !phone && !(ctx.knownClients ?? []).some((item) => item.name === clientName),
+      flat,
+      amount,
+      method,
+    };
+  }
+
+  if (type === "SECURITY_ADJUSTMENT") {
+    const amount = money[0];
+    if (!clientName || !amount) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and security amount.") };
+    }
+    return { type: "security_adjustment", clientName, phone, amount };
+  }
+
+  if (type === "DISCOUNT") {
+    const amount = money[0];
+    if (!clientName || !amount) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and discount amount.") };
+    }
+    return { type: "discount", clientName, phone, amount };
+  }
+
+  if (type === "STAY_EXTENSION") {
+    const extraNights = nightsFrom(text);
+    const extraRevenue = amountAfter(text, /\b(?:total|rent|for|extend)\b/i) ?? money[0];
+    if (!clientName || !extraNights || !extraRevenue) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add customer, extra days, and amount.") };
+    }
+    return {
+      type: "extension",
+      clientName,
+      phone,
+      flat,
+      extraNights,
+      extraRevenue,
+    };
+  }
+
+  if (type === "PAYMENT") {
+    const amount = amountAfter(text, RECEIVED_RE) ?? money[0];
+    if (!clientName || !amount) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and payment amount.") };
+    }
+    return { type: "payment", clientName, phone, flat, amount, method };
+  }
+
+  if (type === "RENT") {
+    const total =
+      amountAfter(text, /\b(total|rent)\b/i) ??
+      (PENDING_RE.test(text) && !RECEIVED_RE.test(text) && !RENT_RE.test(text)
+        ? money[0]
+        : money.length > 1
+          ? Math.max(...money)
+          : money[0]);
+    if (!clientName || !total) {
+      return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and rent amount.") };
+    }
+    const received = RECEIVED_RE.test(text)
+      ? (amountAfter(text, RECEIVED_RE) ?? (money.length > 1 ? Math.min(...money) : 0))
+      : amountAfter(text, /\b(advance)\b/i) ?? (money.length > 1 && RENT_RE.test(text) ? Math.min(...money) : 0);
+    const known = (ctx.knownClients ?? []).some((item) => item.name === clientName && item.phone);
+    return {
+      type: "rent",
+      clientName,
+      phone,
+      needsPhone: !phone && !known,
+      flat,
+      nights,
+      totalAmount: total,
+      receivedAmount: received,
+      remaining: Math.max(0, total - received),
+      method,
+      checkIn: now,
+      checkOut: addDays(now, nights),
+    };
+  }
+
+  return { type: "ambiguous", reason: humanAmbiguous(money, flat) };
 }
-

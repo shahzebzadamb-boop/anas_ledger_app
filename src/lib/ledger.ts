@@ -3,152 +3,181 @@ import type {
   DashboardTotals,
   DateRange,
   LedgerState,
-  Payment,
-  Receivable,
-  ReceivableStatus,
+  Stay,
 } from "@/types";
-import { daysFromToday, inRange, overdueDays, startOfToday } from "@/lib/dates";
+import { inRange } from "@/lib/dates";
+import { formatPKR } from "@/lib/money";
 
-export function paymentsReceived(payments: Payment[]): Payment[] {
-  return payments.filter((payment) => payment.kind === "RECEIVED");
+export function flatName(state: LedgerState, flatId: string | null | undefined): string {
+  if (!flatId) return "";
+  return state.flats.find((item) => item.id === flatId)?.name ?? flatId.replace(/^flat_/, "");
 }
 
-export function paymentsRefunded(payments: Payment[]): Payment[] {
-  return payments.filter((payment) => payment.kind === "REFUND");
-}
-
-export function allocatedReceived(
-  payments: Payment[],
-  receivableId: string,
-): number {
-  return paymentsReceived(payments)
-    .filter((payment) => payment.receivableId === receivableId)
-    .reduce((sum, payment) => sum + payment.amount, 0);
-}
-
-export function remainingForReceivable(
-  receivable: Receivable,
-  payments: Payment[],
-): number {
-  return Math.max(0, receivable.totalAmount - allocatedReceived(payments, receivable.id));
-}
-
-export function clientBalance(
-  clientId: string,
-  state: Pick<LedgerState, "receivables" | "payments">,
-): number {
-  const totalReceivables = state.receivables
-    .filter((item) => item.clientId === clientId && item.status !== "CANCELLED")
-    .reduce((sum, item) => sum + item.totalAmount, 0);
-
-  const totalPayments = paymentsReceived(state.payments)
-    .filter((item) => item.clientId === clientId)
+export function stayRevenue(stayId: string, state: LedgerState): number {
+  return state.rentEntries
+    .filter((item) => item.stayId === stayId)
     .reduce((sum, item) => sum + item.amount, 0);
-
-  return totalReceivables - totalPayments;
 }
 
-export function computeReceivableStatus(
-  receivable: Receivable,
-  payments: Payment[],
-  now = new Date(),
-): ReceivableStatus {
-  if (receivable.status === "CANCELLED") return "CANCELLED";
-  const remaining = remainingForReceivable(receivable, payments);
-  if (remaining <= 0) return "PAID";
-  if (overdueDays(receivable.dueDate, now) > 0) return "OVERDUE";
-  if (allocatedReceived(payments, receivable.id) > 0) return "PARTIAL";
-  return "PENDING";
+export function stayDiscounts(stayId: string, state: LedgerState): number {
+  return state.discounts
+    .filter((item) => item.stayId === stayId)
+    .reduce((sum, item) => sum + item.amount, 0);
 }
 
-export function netCash(received: number, expenses: number, refunds: number): number {
-  return received - expenses - refunds;
+export function stayPayments(stayId: string, state: LedgerState): number {
+  return state.payments
+    .filter((item) => item.stayId === stayId)
+    .reduce((sum, item) => sum + item.amount, 0);
 }
 
-export function dashboardTotals(state: LedgerState, range: DateRange): DashboardTotals {
-  const received = paymentsReceived(state.payments)
-    .filter((payment) => inRange(payment.receivedAt, range))
-    .reduce((sum, payment) => sum + payment.amount, 0);
+export function staySecurityApplied(stayId: string, state: LedgerState): number {
+  return state.security
+    .filter((item) => item.stayId === stayId && item.kind === "ADJUSTED_TO_RENT")
+    .reduce((sum, item) => sum + item.amount, 0);
+}
 
-  const refunds = paymentsRefunded(state.payments)
-    .filter((payment) => inRange(payment.receivedAt, range))
-    .reduce((sum, payment) => sum + payment.amount, 0);
+export function stayCollectible(stayId: string, state: LedgerState): number {
+  return Math.max(0, stayRevenue(stayId, state) - stayDiscounts(stayId, state));
+}
 
-  const expenses = state.expenses
-    .filter((expense) => inRange(expense.spentAt, range))
-    .reduce((sum, expense) => sum + expense.amount, 0);
+export function stayRemaining(stayId: string, state: LedgerState): number {
+  return Math.max(
+    0,
+    stayCollectible(stayId, state) - stayPayments(stayId, state) - staySecurityApplied(stayId, state),
+  );
+}
 
-  const pending = state.receivables
-    .filter((item) => item.status !== "CANCELLED")
-    .reduce((sum, item) => sum + remainingForReceivable(item, state.payments), 0);
+export function clientSecurityHeld(clientId: string, state: LedgerState): number {
+  return state.security
+    .filter((item) => item.clientId === clientId)
+    .reduce((sum, item) => {
+      if (item.kind === "RECEIVED") return sum + item.amount;
+      return sum - item.amount;
+    }, 0);
+}
+
+export function isStayPendingActive(stay: Stay, state: LedgerState): boolean {
+  if (stayRemaining(stay.id, state) <= 0) return false;
+  if (stay.activePending) return true;
+  if (stay.notifyEnabled && stay.importKey === null) return true;
+  return state.reviews.some(
+    (review) =>
+      review.stayId === stay.id &&
+      review.pendingDecision === "STILL_PENDING",
+  );
+}
+
+function matchesFlat(flatId: string | null | undefined, selected: string): boolean {
+  if (selected === "all") return true;
+  return flatId === `flat_${selected}` || flatId === selected;
+}
+
+const SUMMARY_TEXT =
+  /\b(total amount|grand total|sheet total|monthly total|anas received\s*\|)\b/i;
+
+export function isSpreadsheetSummaryText(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (/^total amount\b/i.test(trimmed)) return true;
+  if (/^anas received\s*\|/i.test(trimmed)) return true;
+  return SUMMARY_TEXT.test(trimmed);
+}
+
+function isConfirmedExpense(
+  item: LedgerState["expenses"][number],
+  reviews: LedgerState["reviews"],
+): boolean {
+  if (isSpreadsheetSummaryText(item.description) || isSpreadsheetSummaryText(item.notes)) {
+    return false;
+  }
+  const review = reviews.find((row) => row.id === item.id);
+  if (!review) return true;
+  if (review.proposedType === "SUMMARY" || review.proposedType === "TRANSFER") return false;
+  if (review.proposedType === "EXPENSE" && review.status !== "CONFIRMED") return false;
+  return true;
+}
+
+function isRentPayment(item: LedgerState["payments"][number], reviews: LedgerState["reviews"]): boolean {
+  if (isSpreadsheetSummaryText(item.notes)) return false;
+  const review = reviews.find((row) => row.id === item.id);
+  if (!review) return true;
+  return review.proposedType !== "SUMMARY";
+}
+
+export function dashboardTotals(
+  state: LedgerState,
+  range: DateRange,
+  selectedFlat: string,
+): DashboardTotals {
+  const rent = state.rentEntries.filter(
+    (item) =>
+      matchesFlat(item.flatId, selectedFlat) &&
+      inRange(item.occurredAt, range) &&
+      !isSpreadsheetSummaryText(item.note),
+  );
+  const received = state.payments.filter(
+    (item) =>
+      matchesFlat(item.flatId, selectedFlat) &&
+      inRange(item.receivedAt, range) &&
+      isRentPayment(item, state.reviews),
+  );
+  const expenses = state.expenses.filter(
+    (item) =>
+      matchesFlat(item.flatId, selectedFlat) &&
+      inRange(item.spentAt, range) &&
+      isConfirmedExpense(item, state.reviews),
+  );
+  const discounts = state.discounts.filter(
+    (item) => matchesFlat(item.flatId, selectedFlat) && inRange(item.occurredAt, range),
+  );
+
+  const business = Math.max(
+    0,
+    rent.reduce((sum, item) => sum + item.amount, 0) - discounts.reduce((sum, item) => sum + item.amount, 0),
+  );
+  const receivedSum = received.reduce((sum, item) => sum + item.amount, 0);
+  const expenseSum = expenses.reduce((sum, item) => sum + item.amount, 0);
+
+  const pending = state.stays
+    .filter((stay) => matchesFlat(stay.flatId, selectedFlat))
+    .reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0);
 
   return {
-    received,
+    business,
+    received: receivedSum,
     pending,
-    expenses,
-    refunds,
-    netCash: netCash(received, expenses, refunds),
+    expenses: expenseSum,
   };
 }
 
-function isSnoozed(receivable: Receivable, now: Date): boolean {
-  if (!receivable.snoozedUntil) return false;
-  return new Date(receivable.snoozedUntil) > now;
+export function availableForWithdrawal(state: LedgerState): number {
+  const received = state.payments
+    .filter((item) => isRentPayment(item, state.reviews))
+    .reduce((sum, item) => sum + item.amount, 0);
+  const expenses = state.expenses
+    .filter((item) => isConfirmedExpense(item, state.reviews))
+    .reduce((sum, item) => sum + item.amount, 0);
+  const withdrawals = state.withdrawals.reduce((sum, item) => sum + item.amount, 0);
+  return Math.max(0, received - expenses - withdrawals);
 }
 
-export function needsAttention(
-  state: LedgerState,
-  now = new Date(),
-): AttentionItem[] {
-  const today = startOfToday(now);
-  const tomorrow = daysFromToday(1, now);
-
-  const items: AttentionItem[] = [];
-
-  for (const receivable of state.receivables) {
-    if (receivable.status === "CANCELLED") continue;
-    const remaining = remainingForReceivable(receivable, state.payments);
-    if (remaining <= 0) continue;
-    if (isSnoozed(receivable, now)) continue;
-
-    const due = startOfToday(new Date(receivable.dueDate));
-    const daysOverdue = overdueDays(receivable.dueDate, now);
-    let urgency: AttentionItem["urgency"] | null = null;
-
-    if (daysOverdue > 0) urgency = "overdue";
-    else if (due.getTime() === today.getTime()) urgency = "today";
-    else if (due.getTime() === tomorrow.getTime()) urgency = "tomorrow";
-
-    if (!urgency) continue;
-
-    const client = state.clients.find((item) => item.id === receivable.clientId);
-    if (!client) continue;
-
-    items.push({
-      receivableId: receivable.id,
-      clientId: client.id,
-      clientName: client.name,
-      phone: client.phone,
-      remaining,
-      dueDate: receivable.dueDate,
-      overdueDays: daysOverdue,
-      flat: receivable.flat,
-      urgency,
-      description: receivable.description,
-    });
-  }
-
-  const urgencyRank = { overdue: 0, today: 1, tomorrow: 2 };
-
-  return items.sort((a, b) => {
-    if (urgencyRank[a.urgency] !== urgencyRank[b.urgency]) {
-      return urgencyRank[a.urgency] - urgencyRank[b.urgency];
-    }
-    if (a.urgency === "overdue") {
-      return b.overdueDays - a.overdueDays;
-    }
-    return b.remaining - a.remaining;
-  });
+export function needsAttention(state: LedgerState, selectedFlat = "all"): AttentionItem[] {
+  return state.stays
+    .filter((stay) => matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
+    .map((stay) => {
+      const client = state.clients.find((item) => item.id === stay.clientId);
+      return {
+        stayId: stay.id,
+        clientId: stay.clientId,
+        clientName: client?.name ?? "Customer",
+        phone: client?.phone ?? null,
+        remaining: stayRemaining(stay.id, state),
+        flat: flatName(state, stay.flatId),
+        checkOut: stay.checkOut,
+      };
+    })
+    .sort((a, b) => b.remaining - a.remaining);
 }
 
 export function whatsappLink(phone: string, text: string): string {
@@ -157,53 +186,115 @@ export function whatsappLink(phone: string, text: string): string {
 }
 
 export function reminderMessage(item: AttentionItem): string {
-  return `Hi ${item.clientName}, just a reminder that Rs ${item.remaining.toLocaleString("en-PK")} is still pending. Thank you.`;
+  return `Za kana jan, ${item.clientName} na Rs ${item.remaining.toLocaleString("en-PK")} rawakhla — Flat ${item.flat}`;
+}
+
+export function reviewMonth(item: { month?: string | null; date?: string | null; sourceSheet: string }): string {
+  if (item.month) return item.month;
+  if (item.date) {
+    const parsed = new Date(item.date.includes("T") ? item.date : `${item.date}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+    }
+  }
+  return item.sourceSheet;
+}
+
+export function currentInterpretation(item: LedgerState["reviews"][number], state: LedgerState): string {
+  if (item.currentInterpretation && item.status !== "NEEDS_REVIEW") return item.currentInterpretation;
+  if (item.proposedType === "PENDING_BALANCE" && item.stayId) {
+    const remaining = stayRemaining(item.stayId, state);
+    const stay = state.stays.find((row) => row.id === item.stayId);
+    if (remaining <= 0) return "Pending is 0. Reminders off.";
+    if (stay?.activePending) return `Still pending ${formatPKR(remaining)}. Reminders on.`;
+    return `Open balance ${formatPKR(remaining)}. Reminders off until you confirm still pending.`;
+  }
+  if (item.proposedType === "EXPENSE") {
+    return item.amount
+      ? `Possible expense ${formatPKR(item.amount)}. Not counted until confirmed.`
+      : "Possible expense. Confirm before counting.";
+  }
+  if (item.proposedType === "SUMMARY") return "Spreadsheet total — not counted in Business or Expenses.";
+  if (item.proposedType === "TRANSFER") return "Money sent/transferred — not rent, not an expense.";
+  if (item.proposedType === "STAY") {
+    return item.amount
+      ? `Stay of ${formatPKR(item.amount)} needs a date or clearer payment.`
+      : "Stay is missing a date or payment amount.";
+  }
+  return item.reason;
 }
 
 export type RecentActivityItem = {
   id: string;
   at: string;
-  kind: "payment" | "expense" | "rent";
   title: string;
   detail: string;
   amount: number;
 };
 
 export function recentActivity(state: LedgerState, limit = 8): RecentActivityItem[] {
-  const rents: RecentActivityItem[] = state.receivables.map((item) => {
-    const client = state.clients.find((entry) => entry.id === item.clientId);
-    return {
+  const rows: RecentActivityItem[] = [
+    ...state.rentEntries.map((item) => ({
       id: item.id,
-      at: item.createdAt,
-      kind: "rent",
-      title: client?.name ?? "Client",
-      detail: item.flat ? `Rent · Flat ${item.flat}` : "Rent",
-      amount: item.totalAmount,
-    };
-  });
-
-  const pays: RecentActivityItem[] = state.payments.map((item) => {
-    const client = state.clients.find((entry) => entry.id === item.clientId);
-    return {
+      at: item.occurredAt,
+      title: state.clients.find((client) => client.id === item.clientId)?.name ?? "Rent",
+      detail: `Rent · Flat ${flatName(state, item.flatId)}`,
+      amount: item.amount,
+    })),
+    ...state.payments.map((item) => ({
       id: item.id,
       at: item.receivedAt,
-      kind: "payment",
-      title: client?.name ?? "Client",
-      detail: item.kind === "REFUND" ? "Refund" : "Payment",
+      title: state.clients.find((client) => client.id === item.clientId)?.name ?? "Payment",
+      detail: "Payment received",
       amount: item.amount,
-    };
-  });
+    })),
+    ...state.expenses.map((item) => ({
+      id: item.id,
+      at: item.spentAt,
+      title: item.description,
+      detail: item.flatId ? `Expense · Flat ${flatName(state, item.flatId)}` : "Expense",
+      amount: item.amount,
+    })),
+    ...state.withdrawals.map((item) => ({
+      id: item.id,
+      at: item.occurredAt,
+      title: "Anas withdrawal",
+      detail: "Internal transfer · not in money summary",
+      amount: item.amount,
+    })),
+    ...state.security.map((item) => ({
+      id: item.id,
+      at: item.occurredAt,
+      title: item.kind === "RECEIVED" ? "Security received" : "Security adjusted",
+      detail: state.clients.find((client) => client.id === item.clientId)?.name ?? "Security",
+      amount: item.amount,
+    })),
+    ...state.discounts.map((item) => ({
+      id: item.id,
+      at: item.occurredAt,
+      title: "Discount",
+      detail: state.clients.find((client) => client.id === item.clientId)?.name ?? "Discount",
+      amount: item.amount,
+    })),
+  ];
 
-  const spends: RecentActivityItem[] = state.expenses.map((item) => ({
-    id: item.id,
-    at: item.spentAt,
-    kind: "expense",
-    title: item.description,
-    detail: item.flat ? `Expense · Flat ${item.flat}` : "Expense",
-    amount: item.amount,
-  }));
+  return rows.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
+}
 
-  return [...rents, ...pays, ...spends]
-    .sort((a, b) => (a.at < b.at ? 1 : -1))
-    .slice(0, limit);
+export function clientProfile(clientId: string, state: LedgerState) {
+  const stays = state.stays.filter((item) => item.clientId === clientId);
+  const lastStay = [...stays].sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1))[0];
+  return {
+    totalStays: stays.length,
+    lifetimeBusiness: stays.reduce((sum, stay) => sum + stayCollectible(stay.id, state), 0),
+    lifetimeRevenue: stays.reduce((sum, stay) => sum + stayCollectible(stay.id, state), 0),
+    totalReceived: state.payments
+      .filter((item) => item.clientId === clientId)
+      .reduce((sum, item) => sum + item.amount, 0),
+    currentlyPending: stays.reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0),
+    securityHeld: clientSecurityHeld(clientId, state),
+    lastFlat: lastStay ? flatName(state, lastStay.flatId) : null,
+    lastStay: lastStay?.checkIn ?? null,
+    stays,
+  };
 }

@@ -2,107 +2,177 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { MessageCircle, Phone } from "lucide-react";
+import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/dates";
 import {
-  clientBalance,
-  computeReceivableStatus,
-  remainingForReceivable,
+  clientProfile,
+  flatName,
+  reminderMessage,
+  stayCollectible,
+  stayRemaining,
+  stayRevenue,
   whatsappLink,
 } from "@/lib/ledger";
-import { formatFlat, formatPKR, methodLabel } from "@/lib/money";
+import { formatPKR } from "@/lib/money";
+import { displayPhone } from "@/lib/phone";
 import { useLedger } from "@/lib/store";
-
-function statusTone(status: string) {
-  if (status === "OVERDUE") return "danger" as const;
-  if (status === "PAID") return "success" as const;
-  if (status === "PARTIAL") return "warning" as const;
-  return "neutral" as const;
-}
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
-  const { state } = useLedger();
+  const { state, persist } = useLedger();
+  const [phone, setPhone] = useState("");
   const client = state.clients.find((item) => item.id === params.id);
 
   if (!client) {
     return (
       <div className="space-y-4">
         <PageHeader title="Client not found" />
-        <Link href="/clients" className="text-sm underline">
-          Back to clients
-        </Link>
+        <Link href="/clients" className="text-sm font-medium text-secondary">Back to clients</Link>
       </div>
     );
   }
 
-  const balance = clientBalance(client.id, state);
-  const receivables = state.receivables.filter((item) => item.clientId === client.id);
-  const payments = state.payments.filter((item) => item.clientId === client.id);
-  const message = `Hi ${client.name}, just a reminder that Rs ${Math.max(0, balance).toLocaleString("en-PK")} is still pending. Thank you.`;
+  const profile = clientProfile(client.id, state);
+  const message = reminderMessage({
+    stayId: profile.stays[0]?.id ?? "",
+    clientId: client.id,
+    clientName: client.name,
+    phone: client.phone,
+    remaining: profile.currentlyPending,
+    flat: profile.lastFlat ?? "",
+    checkOut: profile.lastStay ?? "",
+  });
 
   return (
     <div className="space-y-4">
-      <PageHeader title={client.name} subtitle={client.notes ?? "Client ledger"} />
-      <Card>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Balance</p>
-        <p className="mt-2 text-2xl font-semibold">{formatPKR(balance)}</p>
-        <p className="mt-1 text-sm text-muted">Total receivables − total payments</p>
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <a
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border text-sm font-medium"
-            href={client.phone ? `tel:+${client.phone}` : undefined}
+      <PageHeader title={client.name} subtitle={displayPhone(client.phone)} />
+      {client.phone ? (
+        <a
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-primary text-sm font-semibold text-primary"
+          href={whatsappLink(client.phone, message)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          WhatsApp
+        </a>
+      ) : (
+        <div className="space-y-2">
+          <input
+            className="w-full rounded-xl border border-border bg-input px-3 text-base"
+            placeholder="Add customer number"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+          <Button
+            variant="primary"
+            className="w-full"
+            onClick={() => {
+              if (!phone.trim()) return;
+              void persist({ type: "SET_CLIENT_PHONE", clientId: client.id, phone }).then(() => setPhone(""));
+            }}
           >
-            <Phone size={16} /> Call
-          </a>
-          <a
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border text-sm font-medium"
-            href={client.phone ? whatsappLink(client.phone, message) : undefined}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <MessageCircle size={16} /> WhatsApp
-          </a>
+            Save phone
+          </Button>
         </div>
-      </Card>
+      )}
 
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Receivables</h2>
-        {receivables.map((item) => {
-          const status = computeReceivableStatus(item, state.payments);
-          return (
-            <Card key={item.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{formatPKR(remainingForReceivable(item, state.payments))} remaining</p>
-                  <p className="mt-1 text-sm text-muted">
-                    {formatPKR(item.totalAmount)} total · due {formatDate(item.dueDate)}
-                    {item.flat ? ` · ${formatFlat(item.flat)}` : ""}
-                  </p>
-                </div>
-                <Badge tone={statusTone(status)}>{status}</Badge>
-              </div>
-            </Card>
-          );
-        })}
-      </section>
+      <div className="grid grid-cols-2 gap-2.5">
+        <Summary label="Stays" value={String(profile.totalStays)} />
+        <Summary label="Business" value={formatPKR(profile.lifetimeBusiness)} money />
+        <Summary label="Received" value={formatPKR(profile.totalReceived)} money accent="text-primary" />
+        <Summary
+          label="Pending"
+          value={formatPKR(profile.currentlyPending)}
+          money
+          accent={profile.currentlyPending > 0 ? "text-warning" : undefined}
+        />
+        <Summary label="Security" value={formatPKR(profile.securityHeld)} money />
+        <Summary label="Last flat" value={profile.lastFlat ?? "—"} />
+      </div>
+      <p className="text-sm font-normal text-muted">
+        Last stay {profile.lastStay ? formatDate(profile.lastStay) : "—"}
+      </p>
 
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Payments</h2>
-        {payments.map((item) => (
-          <Card key={item.id} className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-medium">{formatPKR(item.amount)}</p>
-              <p className="mt-1 text-sm text-muted">
-                {item.kind === "REFUND" ? "Refund" : methodLabel(item.method)} · {formatDate(item.receivedAt)}
-              </p>
-            </div>
-          </Card>
-        ))}
+      {profile.stays.map((stay) => (
+        <div key={stay.id} className="border-b border-border py-2.5 last:border-b-0">
+          <p className="font-semibold">Flat {flatName(state, stay.flatId)}</p>
+          <p className="mt-0.5 text-sm font-normal text-muted">
+            {formatDate(stay.checkIn)} · {stay.nights} days
+          </p>
+          <p className="mt-1 text-sm font-normal text-secondary">
+            Revenue <span className="money text-foreground">{formatPKR(stayRevenue(stay.id, state))}</span>
+            {" · "}Collectible <span className="money text-foreground">{formatPKR(stayCollectible(stay.id, state))}</span>
+            {" · "}Pending <span className="money text-warning">{formatPKR(stayRemaining(stay.id, state))}</span>
+          </p>
+        </div>
+      ))}
+
+      <section>
+        <h2 className="section-title mb-2">History</h2>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface empty:hidden">
+          {state.rentEntries.filter((item) => item.clientId === client.id).map((item) => (
+            <TimelineRow
+              key={item.id}
+              title={`Rent ${formatPKR(item.amount)}`}
+              detail={`${formatDate(item.occurredAt)}${item.note ? ` · ${item.note}` : ""}`}
+            />
+          ))}
+          {state.payments.filter((item) => item.clientId === client.id).map((item) => (
+            <TimelineRow
+              key={item.id}
+              title={`Payment ${formatPKR(item.amount)}`}
+              detail={formatDate(item.receivedAt)}
+            />
+          ))}
+          {state.security.filter((item) => item.clientId === client.id).map((item) => (
+            <TimelineRow
+              key={item.id}
+              title={`${item.kind === "RECEIVED" ? "Security" : "Security adjusted"} ${formatPKR(item.amount)}`}
+              detail={formatDate(item.occurredAt)}
+            />
+          ))}
+          {state.discounts.filter((item) => item.clientId === client.id).map((item) => (
+            <TimelineRow
+              key={item.id}
+              title={`Discount ${formatPKR(item.amount)}`}
+              detail={formatDate(item.occurredAt)}
+            />
+          ))}
+        </div>
       </section>
+    </div>
+  );
+}
+
+function Summary({
+  label,
+  value,
+  money,
+  accent,
+}: {
+  label: string;
+  value: string;
+  money?: boolean;
+  accent?: string;
+}) {
+  return (
+    <Card className="p-3">
+      <p className="card-label">{label}</p>
+      <p className={`${money ? "money" : "font-semibold"} mt-1.5 text-base ${accent ?? "text-foreground"}`}>
+        {value}
+      </p>
+    </Card>
+  );
+}
+
+function TimelineRow({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="border-b border-border px-3.5 py-2.5 last:border-b-0">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-0.5 text-xs font-normal text-muted">{detail}</p>
     </div>
   );
 }

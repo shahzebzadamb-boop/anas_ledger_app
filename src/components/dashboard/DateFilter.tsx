@@ -1,69 +1,91 @@
 "use client";
 
-import { format } from "date-fns";
-import { Button } from "@/components/ui/Button";
-import type { DateFilterPreset, DateRange } from "@/types";
+import type { DateFilterPreset, DateRange, Flat } from "@/types";
 import { cn } from "@/lib/utils";
 
-const presets: { id: DateFilterPreset; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "7days", label: "7 Days" },
-  { id: "month", label: "This Month" },
-  { id: "custom", label: "Custom" },
+const presets: { value: DateFilterPreset; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "7days", label: "7 Days" },
+  { value: "month", label: "This Month" },
+  { value: "custom", label: "Custom" },
 ];
 
 export function DateFilter({
+  flats,
+  selectedFlat,
+  onFlat,
   preset,
   custom,
   onPreset,
   onCustom,
 }: {
+  flats: Flat[];
+  selectedFlat: string;
+  onFlat: (value: string) => void;
   preset: DateFilterPreset;
   custom: DateRange;
-  onPreset: (preset: DateFilterPreset) => void;
-  onCustom: (range: DateRange) => void;
+  onPreset: (value: DateFilterPreset) => void;
+  onCustom: (value: DateRange) => void;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+    <div className="min-w-0 space-y-2.5">
+      <div className="flex flex-wrap gap-2">
+        <Chip active={selectedFlat === "all"} onClick={() => onFlat("all")}>
+          All Flats
+        </Chip>
+        {flats.map((flat) => (
+          <Chip key={flat.id} active={selectedFlat === flat.name} onClick={() => onFlat(flat.name)}>
+            {flat.name}
+          </Chip>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
         {presets.map((item) => (
-          <Button
-            key={item.id}
-            type="button"
-            variant={preset === item.id ? "primary" : "secondary"}
-            className={cn("shrink-0 px-4", preset === item.id && "shadow-none")}
-            onClick={() => onPreset(item.id)}
-          >
+          <Chip key={item.value} active={preset === item.value} onClick={() => onPreset(item.value)}>
             {item.label}
-          </Button>
+          </Chip>
         ))}
       </div>
       {preset === "custom" ? (
         <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs text-muted">
-            From
-            <input
-              type="date"
-              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
-              value={format(custom.from, "yyyy-MM-dd")}
-              onChange={(event) =>
-                onCustom({ ...custom, from: new Date(`${event.target.value}T00:00:00`) })
-              }
-            />
-          </label>
-          <label className="text-xs text-muted">
-            To
-            <input
-              type="date"
-              className="mt-1 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground"
-              value={format(custom.to, "yyyy-MM-dd")}
-              onChange={(event) =>
-                onCustom({ ...custom, to: new Date(`${event.target.value}T23:59:59`) })
-              }
-            />
-          </label>
+          <input
+            type="date"
+            className="rounded-xl border border-border bg-input px-3 text-base"
+            value={toInput(custom.from)}
+            onChange={(event) => onCustom({ ...custom, from: new Date(event.target.value) })}
+          />
+          <input
+            type="date"
+            className="rounded-xl border border-border bg-input px-3 text-base"
+            value={toInput(custom.to)}
+            onChange={(event) => onCustom({ ...custom, to: new Date(event.target.value) })}
+          />
         </div>
       ) : null}
     </div>
   );
+}
+
+function Chip({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn("chip", active && "chip-active")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function toInput(date: Date) {
+  return date.toISOString().slice(0, 10);
 }

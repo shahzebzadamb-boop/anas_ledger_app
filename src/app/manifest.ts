@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Client money management and accounting",
     start_url: "/",
     display: "standalone",
-    background_color: "#f6f6f4",
-    theme_color: "#f6f6f4",
+    background_color: "#111214",
+    theme_color: "#111214",
     icons: [
       {
         src: "/icons/icon.svg",
