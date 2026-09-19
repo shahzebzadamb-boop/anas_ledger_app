@@ -164,6 +164,29 @@ if (totals.business !== 40000 || totals.pending !== 40000) {
   console.log("OK pending excludes activePending=false and respects month");
 }
 
+const overflowState = {
+  ...dashState,
+  rentEntries: [
+    ...dashState.rentEntries,
+    {
+      id: "r_bad",
+      stayId: liveStay.id,
+      clientId: "c2",
+      flatId: "flat_802-A",
+      amount: 2147483647,
+      occurredAt: "2026-09-18T00:00:00.000Z",
+      note: null,
+    },
+  ],
+};
+const overflowTotals = dashboardTotals(overflowState, month, "all");
+if (overflowTotals.business !== 40000 || overflowTotals.pending !== 40000) {
+  failed += 1;
+  console.error("INT_MAX FILTER FAIL", overflowTotals);
+} else {
+  console.log("OK dashboard excludes INT_MAX phone-as-rent");
+}
+
 if (failed) {
   console.error(failed, "failed");
   process.exit(1);

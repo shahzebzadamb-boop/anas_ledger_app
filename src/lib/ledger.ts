@@ -6,7 +6,7 @@ import type {
   Stay,
 } from "@/types";
 import { inRange } from "@/lib/dates";
-import { formatPKR } from "@/lib/money";
+import { formatPKR, isPlausibleLedgerAmount } from "@/lib/money";
 
 export function flatName(state: LedgerState, flatId: string | null | undefined): string {
   if (!flatId) return "";
@@ -15,7 +15,7 @@ export function flatName(state: LedgerState, flatId: string | null | undefined):
 
 export function stayRevenue(stayId: string, state: LedgerState): number {
   return state.rentEntries
-    .filter((item) => item.stayId === stayId)
+    .filter((item) => item.stayId === stayId && isPlausibleLedgerAmount(item.amount))
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
@@ -27,7 +27,7 @@ export function stayDiscounts(stayId: string, state: LedgerState): number {
 
 export function stayPayments(stayId: string, state: LedgerState): number {
   return state.payments
-    .filter((item) => item.stayId === stayId)
+    .filter((item) => item.stayId === stayId && isPlausibleLedgerAmount(item.amount))
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
@@ -122,18 +122,21 @@ export function dashboardTotals(
     (item) =>
       matchesFlat(item.flatId, selectedFlat) &&
       inRange(item.occurredAt, range) &&
+      isPlausibleLedgerAmount(item.amount) &&
       !isSpreadsheetSummaryText(item.note),
   );
   const received = state.payments.filter(
     (item) =>
       matchesFlat(item.flatId, selectedFlat) &&
       inRange(item.receivedAt, range) &&
+      isPlausibleLedgerAmount(item.amount) &&
       isRentPayment(item, state.reviews),
   );
   const expenses = state.expenses.filter(
     (item) =>
       matchesFlat(item.flatId, selectedFlat) &&
       inRange(item.spentAt, range) &&
+      isPlausibleLedgerAmount(item.amount) &&
       isConfirmedExpense(item, state.reviews),
   );
   const discounts = state.discounts.filter(

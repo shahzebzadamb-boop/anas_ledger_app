@@ -53,6 +53,23 @@ async function removeClampedPhoneRent(pool: Pool): Promise<void> {
      WHERE id = ?`,
     [SOURCE_NOTE, BAD_STAY_ID],
   );
+  await ensurePhoneRentAudit(pool);
+}
+
+async function ensurePhoneRentAudit(pool: Pool): Promise<void> {
+  const auditId = `audit_intmax_${BAD_RENT_ID.slice(0, 8)}`;
+  const [existing] = await pool.query<RowDataPacket[]>(
+    "SELECT id FROM audit_logs WHERE id = ? OR (entityId = ? AND action = 'PHONE_AS_RENT_REMOVED') LIMIT 1",
+    [auditId, BAD_RENT_ID],
+  );
+  if (existing.length) return;
+  const [stay] = await pool.query<RowDataPacket[]>("SELECT id FROM stays WHERE id = ? LIMIT 1", [BAD_STAY_ID]);
+  if (stay.length === 0) return;
+  await pool.execute(
+    `INSERT INTO audit_logs (id, createdAt, action, entityType, entityId, originalValue, newValue, reason)
+     VALUES (?, UTC_TIMESTAMP(3), 'PHONE_AS_RENT_REMOVED', 'business_entries', ?, ?, 'removed', ?)`,
+    [auditId, BAD_RENT_ID, String(INT_MAX), SOURCE_NOTE],
+  );
 }
 
 export async function repairKnownIntMaxRow(pool: Pool): Promise<void> {
@@ -63,5 +80,6 @@ export async function repairKnownIntMaxRow(pool: Pool): Promise<void> {
     // App DB users may lack ALTER. Parser/persist already reject phone-sized amounts.
   }
   await removeClampedPhoneRent(pool);
+  await ensurePhoneRentAudit(pool);
   ran = true;
 }
