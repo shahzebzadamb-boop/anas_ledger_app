@@ -223,10 +223,16 @@ function detectName(text: string, known: { name: string }[]): string | null {
   return titleCase(words.slice(0, 3));
 }
 
+function stripPhones(text: string): string {
+  return text
+    .replace(/\b(?:\+?92|0)?3\d{9}\b/g, " ")
+    .replace(/\b(?:\+?92|0)?3\d{2}[\s-]+\d{7}\b/g, " ");
+}
+
 function amounts(text: string, flat: string | null): number[] {
   const dayCount = text.match(DAYS_RE)?.[1] ?? null;
   const tokens =
-    text.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
+    stripPhones(text).match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
   const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
   return tokens
     .map((token) => parseAmountToken(token.replace(/^rs\.?\s*/i, "")))
@@ -241,8 +247,8 @@ function amounts(text: string, flat: string | null): number[] {
 function amountAfter(text: string, keyword: RegExp): number | null {
   const match = text.match(keyword);
   if (!match || match.index === undefined) return null;
-  const after = text.slice(match.index + match[0].length);
-  const before = text.slice(0, match.index);
+  const after = stripPhones(text.slice(match.index + match[0].length));
+  const before = stripPhones(text.slice(0, match.index));
   const afterToken = after.match(/(?:rs\.?\s*)?[\d,]+(?:\.\d+)?(?:k|lac|lakh)?/i);
   if (afterToken) return parseAmountToken(afterToken[0].replace(/^rs\.?\s*/i, ""));
   const beforeTokens =

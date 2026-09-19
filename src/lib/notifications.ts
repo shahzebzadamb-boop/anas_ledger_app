@@ -67,8 +67,10 @@ export function nightSummaryText(state: LedgerState, now = new Date()): string {
   const today = rangeForPreset("today", null, now);
   const totals = dashboardTotals(state, today, "all");
   const pendingAdded = state.stays
-    .filter((stay) =>
-      state.rentEntries.some((item) => item.stayId === stay.id && inRange(item.occurredAt, today)),
+    .filter(
+      (stay) =>
+        isStayPendingActive(stay, state) &&
+        state.rentEntries.some((item) => item.stayId === stay.id && inRange(item.occurredAt, today)),
     )
     .reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0);
   const owing = state.stays.filter((stay) => isStayPendingActive(stay, state)).length;

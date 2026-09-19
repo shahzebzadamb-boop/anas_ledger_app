@@ -73,6 +73,14 @@ function matchesFlat(flatId: string | null | undefined, selected: string): boole
   return flatId === `flat_${selected}` || flatId === selected;
 }
 
+function stayTouchesRange(stay: Stay, state: LedgerState, range: DateRange): boolean {
+  if (inRange(stay.checkIn, range) || inRange(stay.checkOut, range)) return true;
+  if (state.rentEntries.some((item) => item.stayId === stay.id && inRange(item.occurredAt, range))) {
+    return true;
+  }
+  return state.payments.some((item) => item.stayId === stay.id && inRange(item.receivedAt, range));
+}
+
 const SUMMARY_TEXT =
   /\b(total amount|grand total|sheet total|monthly total|anas received\s*\|)\b/i;
 
@@ -140,7 +148,12 @@ export function dashboardTotals(
   const expenseSum = expenses.reduce((sum, item) => sum + item.amount, 0);
 
   const pending = state.stays
-    .filter((stay) => matchesFlat(stay.flatId, selectedFlat))
+    .filter(
+      (stay) =>
+        matchesFlat(stay.flatId, selectedFlat) &&
+        isStayPendingActive(stay, state) &&
+        stayTouchesRange(stay, state, range),
+    )
     .reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0);
 
   return {
@@ -291,7 +304,9 @@ export function clientProfile(clientId: string, state: LedgerState) {
     totalReceived: state.payments
       .filter((item) => item.clientId === clientId)
       .reduce((sum, item) => sum + item.amount, 0),
-    currentlyPending: stays.reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0),
+    currentlyPending: stays
+      .filter((stay) => isStayPendingActive(stay, state))
+      .reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0),
     securityHeld: clientSecurityHeld(clientId, state),
     lastFlat: lastStay ? flatName(state, lastStay.flatId) : null,
     lastStay: lastStay?.checkIn ?? null,

@@ -12,6 +12,8 @@ Use a **fresh empty** Anas Ledger database. Do not import these into Finance Flo
 
 Then set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` on the Anas Ledger Node.js app only. Do not put the password in Git.
 
+`4_alter_amount_bigint.sql` is a later one-time repair for the Sept 2026 phone-as-rent row. Do not use it as a fresh import. The live app also applies that repair on first load.
+
 Open `/api/health`. You should see `{ "app": "ok", "database": "ok" }`.
 
 Optional local check: `npm run validate:db`.

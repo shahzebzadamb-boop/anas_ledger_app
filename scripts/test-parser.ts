@@ -1,5 +1,8 @@
-import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
+import { emptyLedgerState } from "../src/lib/empty-state";
+import { dashboardTotals } from "../src/lib/ledger";
+import { parseAmountToken } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
+import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 
 const known = [{ name: "Tufail Khan", phone: "923001234567" }];
 const cases: [string, string][] = [
@@ -63,6 +66,102 @@ for (const [text, check] of mig) {
   } else {
     console.log("OK mig", text);
   }
+}
+
+const phoneAsRent = parseQuickEntry("Sept booked by 03324000842 802a 2 nights", { knownClients: known });
+if (phoneAsRent.type !== "ambiguous") {
+  failed += 1;
+  console.error("PHONE AMOUNT FAIL", phoneAsRent);
+} else {
+  console.log("OK rejected phone-as-rent");
+}
+
+const phoneWithRent = parseQuickEntry("Sept booked by 03324000842 802a 2 nights total 40k", {
+  knownClients: known,
+});
+if (phoneWithRent.type !== "rent" || phoneWithRent.totalAmount !== 40000) {
+  failed += 1;
+  console.error("PHONE+RENT FAIL", phoneWithRent);
+} else {
+  console.log("OK phone stripped, rent 40000");
+}
+
+if (parseAmountToken("03324000842") !== null || parseAmountToken("3324000842") !== null) {
+  failed += 1;
+  console.error("TOKEN PHONE FAIL");
+} else {
+  console.log("OK parseAmountToken rejects phone digits");
+}
+
+if (parseAmountToken("330000") !== 330000) {
+  failed += 1;
+  console.error("LEGIT 330000 FAIL");
+} else {
+  console.log("OK kept historical 330000");
+}
+
+const month = {
+  from: new Date("2026-09-01T00:00:00.000Z"),
+  to: new Date("2026-09-30T23:59:59.999Z"),
+};
+const histStay = {
+  id: "stay_hist",
+  createdAt: "2026-07-08T00:00:00.000Z",
+  flatId: "flat_802-A",
+  clientId: "c1",
+  checkIn: "2026-07-08T00:00:00.000Z",
+  checkOut: "2026-07-10T00:00:00.000Z",
+  nights: 2,
+  notifyEnabled: false,
+  activePending: false,
+  importKey: "imp_hist",
+};
+const liveStay = {
+  id: "stay_live",
+  createdAt: "2026-09-18T00:00:00.000Z",
+  flatId: "flat_802-A",
+  clientId: "c2",
+  checkIn: "2026-09-18T00:00:00.000Z",
+  checkOut: "2026-09-20T00:00:00.000Z",
+  nights: 2,
+  notifyEnabled: true,
+  activePending: true,
+  importKey: null,
+};
+const dashState = {
+  ...emptyLedgerState(),
+  clients: [
+    { id: "c1", createdAt: histStay.createdAt, name: "Hist", phone: null, phoneMissing: true, notes: null },
+    { id: "c2", createdAt: liveStay.createdAt, name: "Live", phone: "923001234567", phoneMissing: false, notes: null },
+  ],
+  stays: [histStay, liveStay],
+  rentEntries: [
+    {
+      id: "r1",
+      stayId: histStay.id,
+      clientId: "c1",
+      flatId: "flat_802-A",
+      amount: 121000,
+      occurredAt: "2026-07-08T00:00:00.000Z",
+      note: null,
+    },
+    {
+      id: "r2",
+      stayId: liveStay.id,
+      clientId: "c2",
+      flatId: "flat_802-A",
+      amount: 40000,
+      occurredAt: "2026-09-18T00:00:00.000Z",
+      note: null,
+    },
+  ],
+};
+const totals = dashboardTotals(dashState, month, "all");
+if (totals.business !== 40000 || totals.pending !== 40000) {
+  failed += 1;
+  console.error("PENDING FILTER FAIL", totals);
+} else {
+  console.log("OK pending excludes activePending=false and respects month");
 }
 
 if (failed) {

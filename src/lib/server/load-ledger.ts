@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2";
 import { emptyLedgerState } from "@/lib/empty-state";
 import { normalizeState } from "@/lib/ledger-actions";
 import { asBool, getPool, toIso } from "@/lib/server/db";
+import { repairKnownIntMaxRow } from "@/lib/server/repair-known-intmax";
 import type {
   ExpenseCategory,
   LedgerState,
@@ -12,6 +13,7 @@ import type {
 
 export async function loadLedgerState(): Promise<LedgerState> {
   const pool = getPool();
+  await repairKnownIntMaxRow(pool);
   const [
     [flats],
     [clients],

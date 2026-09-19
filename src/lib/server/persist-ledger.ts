@@ -3,9 +3,16 @@ import type { Action } from "@/lib/ledger-actions";
 import { reducer, reviveAction } from "@/lib/ledger-actions";
 import { getPool, toSqlDate } from "@/lib/server/db";
 import { loadLedgerState } from "@/lib/server/load-ledger";
+import { isPlausibleLedgerAmount } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 import { createId } from "@/lib/utils";
 import type { LedgerState } from "@/types";
+
+function assertPlausibleAmount(amount: number, label: string): void {
+  if (!isPlausibleLedgerAmount(amount)) {
+    throw new Error(`${label} amount is not a plausible PKR figure.`);
+  }
+}
 
 function ids<T extends { id: string }>(items: T[]): Set<string> {
   return new Set(items.map((item) => item.id));
@@ -103,6 +110,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforeRent = ids(before.rentEntries);
   for (const item of after.rentEntries) {
     if (!beforeRent.has(item.id)) {
+      assertPlausibleAmount(item.amount, "Rent");
       await connection.execute(
         `INSERT INTO business_entries (id, createdAt, stayId, clientId, flatId, amount, occurredAt, importKey, note)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -122,6 +130,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
     }
     const delta = changed(before.rentEntries, after.rentEntries, item.id);
     if (!delta) continue;
+    assertPlausibleAmount(item.amount, "Rent");
     await connection.execute("UPDATE business_entries SET amount = ?, note = ? WHERE id = ?", [
       item.amount,
       item.note,
@@ -132,6 +141,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforePayments = ids(before.payments);
   for (const payment of after.payments) {
     if (beforePayments.has(payment.id)) continue;
+    assertPlausibleAmount(payment.amount, "Payment");
     await connection.execute(
       `INSERT INTO payments (id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, importKey)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -153,6 +163,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforeExpenses = ids(before.expenses);
   for (const expense of after.expenses) {
     if (beforeExpenses.has(expense.id)) continue;
+    assertPlausibleAmount(expense.amount, "Expense");
     await connection.execute(
       `INSERT INTO expenses (id, createdAt, flatId, amount, category, description, method, spentAt, notes, importKey)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -174,6 +185,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforeSecurity = ids(before.security);
   for (const item of after.security) {
     if (beforeSecurity.has(item.id)) continue;
+    assertPlausibleAmount(item.amount, "Security");
     await connection.execute(
       `INSERT INTO security_transactions (id, createdAt, clientId, stayId, flatId, kind, amount, occurredAt, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -194,6 +206,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforeDiscounts = ids(before.discounts);
   for (const item of after.discounts) {
     if (beforeDiscounts.has(item.id)) continue;
+    assertPlausibleAmount(item.amount, "Discount");
     await connection.execute(
       `INSERT INTO discounts (id, createdAt, stayId, clientId, flatId, amount, occurredAt, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -213,6 +226,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
   const beforeWithdrawals = ids(before.withdrawals);
   for (const item of after.withdrawals) {
     if (beforeWithdrawals.has(item.id)) continue;
+    assertPlausibleAmount(item.amount, "Withdrawal");
     await connection.execute(
       "INSERT INTO withdrawals (id, createdAt, amount, occurredAt, note) VALUES (?, ?, ?, ?, ?)",
       [item.id, toSqlDate(item.occurredAt), item.amount, toSqlDate(item.occurredAt), item.note],

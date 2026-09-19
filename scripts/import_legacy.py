@@ -84,22 +84,40 @@ def title_name(name: str) -> str:
     return cleaned
 
 
+MAX_LEDGER_AMOUNT = 9_999_999
+
+
+def looks_like_phone_amount(amount: int) -> bool:
+    digits = str(abs(amount))
+    return len(digits) >= 10 or bool(re.fullmatch(r"(?:92)?3\d{9}", digits))
+
+
+def plausible_amount(amount: int) -> bool:
+    return 0 < amount <= MAX_LEDGER_AMOUNT and not looks_like_phone_amount(amount)
+
+
 def first_amount(text: str) -> int | None:
     if not text:
         return None
     if "*" in text and "=" in text:
         right = text.split("=")[-1]
         return first_amount(right)
-    match = re.search(r"(\d{1,3}(?:,\d{3})+|\d+)", text.replace(" ", ""))
-    if not match:
-        match = re.search(r"(\d{1,3}(?:,\d{3})+|\d+)", text)
-    if not match:
-        return None
-    return int(match.group(1).replace(",", ""))
+    matches = re.findall(r"(\d{1,3}(?:,\d{3})+|\d+)", text.replace(" ", ""))
+    if not matches:
+        matches = re.findall(r"(\d{1,3}(?:,\d{3})+|\d+)", text)
+    for raw in matches:
+        amount = int(raw.replace(",", ""))
+        if plausible_amount(amount):
+            return amount
+    return None
 
 
 def all_amounts(text: str) -> list[int]:
-    return [int(m.replace(",", "")) for m in re.findall(r"\d{1,3}(?:,\d{3})+|\d{3,}", text)]
+    return [
+        amount
+        for amount in (int(m.replace(",", "")) for m in re.findall(r"\d{1,3}(?:,\d{3})+|\d{3,}", text))
+        if plausible_amount(amount)
+    ]
 
 
 def detect_method(text: str) -> str:
