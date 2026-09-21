@@ -34,6 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# spreadsheet copies and import dumps — MySQL is the source of truth
+*.xlsx
+/data/
+/src/data/import-result.json
+
 # vercel
 .vercel
 
