@@ -35,16 +35,16 @@ export function CalculatorPad() {
   }, []);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-      <div className="flex min-h-[22vh] items-end justify-end py-3">
+    <div className="flex w-full flex-col bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+      <div className="flex h-36 w-full items-end justify-end py-3">
         <p
-          className="w-full text-right font-sans text-[3.4rem] font-light leading-none tracking-tight text-[#f5f5f7] [font-variant-numeric:tabular-nums]"
+          className="w-full text-right font-sans font-light leading-none tracking-tight text-[#f5f5f7] [font-variant-numeric:tabular-nums]"
           style={{ fontSize: display.length > 8 ? "2.4rem" : display.length > 6 ? "2.9rem" : "3.4rem" }}
         >
           {display}
         </p>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid w-full grid-cols-4 gap-3">
         {KEYS.map((item) => (
           <button
             key={item.key}
