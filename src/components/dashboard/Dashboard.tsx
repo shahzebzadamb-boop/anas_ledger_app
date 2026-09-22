@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { startOfMonth } from "date-fns";
 import Link from "next/link";
 import { Calculator } from "lucide-react";
@@ -11,12 +11,10 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { rangeForPreset } from "@/lib/dates";
-import { needsAttention, recentActivity } from "@/lib/ledger";
+import { dashboardTotals, needsAttention, stayLedgerRows } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
-import type { DashboardTotals, DateFilterPreset, DateRange } from "@/types";
-
-const ZERO_TOTALS: DashboardTotals = { business: 0, received: 0, pending: 0, expenses: 0 };
+import type { DateFilterPreset, DateRange } from "@/types";
 
 export function Dashboard() {
   const { state } = useLedger();
@@ -27,32 +25,12 @@ export function Dashboard() {
     to: new Date(),
   });
   const [toast, setToast] = useState(false);
-  const [totals, setTotals] = useState<DashboardTotals>(ZERO_TOTALS);
 
   const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
   const attention = useMemo(() => needsAttention(state, selectedFlat), [state, selectedFlat]);
-  const activity = useMemo(() => recentActivity(state), [state]);
+  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
+  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [state, range, selectedFlat]);
   const reviewCount = state.reviews.filter((item) => item.status === "NEEDS_REVIEW").length;
-
-  useEffect(() => {
-    const params = new URLSearchParams({
-      from: range.from.toISOString(),
-      to: range.to.toISOString(),
-      flat: selectedFlat,
-    });
-    let cancelled = false;
-    fetch(`/api/dashboard?${params}`, { cache: "no-store" })
-      .then(async (response) => {
-        const data = (await response.json()) as { totals?: DashboardTotals };
-        if (!cancelled) setTotals(data.totals ?? ZERO_TOTALS);
-      })
-      .catch(() => {
-        if (!cancelled) setTotals(ZERO_TOTALS);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [range, selectedFlat, state]);
 
   return (
     <div className="space-y-3.5">
@@ -60,6 +38,7 @@ export function Dashboard() {
       <PageHeader
         title="ANAS LEDGER"
         subtitle="Fast mobile cash notebook"
+        logo
         actions={
           <Link
             href="/calculator"
@@ -106,7 +85,7 @@ export function Dashboard() {
         }}
       />
       <NeedsAttention items={attention} />
-      <RecentActivity items={activity} />
+      <RecentActivity stays={stays} showFlat={selectedFlat === "all"} />
     </div>
   );
 }

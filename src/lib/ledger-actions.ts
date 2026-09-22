@@ -2,7 +2,9 @@ import { addDays } from "date-fns";
 import {
   clientSecurityHeld,
   availableForWithdrawal,
+  paymentStayChoices,
   stayRemaining,
+  uniquePaymentStayId,
 } from "@/lib/ledger";
 import { formatPKR } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
@@ -371,10 +373,11 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
   const foundReceiver = findReceiver(state, input);
   let next = foundReceiver.state;
   const receiver = foundReceiver.receiver;
-  let stayId = input.stayId ?? null;
-  if (!stayId) {
-    stayId = openStayFor(next, input.clientId, null)?.id ?? null;
-  }
+  const stayId =
+    input.stayId && next.stays.some((item) => item.id === input.stayId)
+      ? input.stayId
+      : uniquePaymentStayId(paymentStayChoices(next, input.clientId, null));
+  if (!stayId) return next;
   const stay = next.stays.find((item) => item.id === stayId);
   const payment: Payment = {
     id: createId("pay"),
@@ -605,10 +608,12 @@ function reducer(state: LedgerState, action: Action): LedgerState {
       const client = found.client;
 
       if (parsed.type === "payment") {
-        const stay = openStayFor(next, client.id, parsed.flat);
+        const stayId =
+          parsed.stayId ?? uniquePaymentStayId(paymentStayChoices(next, client.id, parsed.flat));
+        if (!stayId) return next;
         return applyPayment(next, {
           clientId: client.id,
-          stayId: stay?.id ?? null,
+          stayId,
           amount: parsed.amount,
           method: parsed.method,
           receivedByName: parsed.receivedByName,

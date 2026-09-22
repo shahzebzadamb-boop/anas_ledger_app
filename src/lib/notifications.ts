@@ -90,7 +90,7 @@ export function canUseBrowserNotifications() {
 export function notifyBrowser(title: string, body: string) {
   if (!canUseBrowserNotifications()) return;
   if (Notification.permission !== "granted") return;
-  new Notification(title, { body, tag: body.slice(0, 40) });
+  new Notification(title, { body, tag: body.slice(0, 40), icon: "/icons/icon-192.png" });
 }
 
 export function pendingNotice(item: AttentionItem): string {

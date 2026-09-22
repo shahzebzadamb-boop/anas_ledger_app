@@ -60,6 +60,10 @@ export function formatDateShort(isoDate: string): string {
   return format(new Date(isoDate), "d MMM");
 }
 
+export function formatStayDates(checkIn: string, checkOut: string): string {
+  return `${formatDateShort(checkIn)} – ${formatDateShort(checkOut)}`;
+}
+
 export function overdueDays(dueDateISO: string, now = new Date()): number {
   const due = startOfDay(new Date(dueDateISO));
   const today = startOfDay(now);

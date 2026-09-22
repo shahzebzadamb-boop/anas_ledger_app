@@ -1,5 +1,5 @@
-const CACHE = "anas-ledger-static-v2";
-const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE = "anas-ledger-static-v3";
+const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/logo-mark.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));

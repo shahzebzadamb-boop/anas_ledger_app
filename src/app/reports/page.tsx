@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { startOfMonth } from "date-fns";
 import { DateFilter } from "@/components/dashboard/DateFilter";
+import { StayLedgerCard } from "@/components/dashboard/StayLedgerCard";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { inRange, rangeForPreset } from "@/lib/dates";
+import {
+  dashboardTotals,
+  expenseLedgerRows,
+  stayLedgerRows,
+  totalsMatchStayLedger,
+} from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
-import type { DashboardTotals, DateFilterPreset, DateRange } from "@/types";
-
-const ZERO_TOTALS: DashboardTotals = { business: 0, received: 0, pending: 0, expenses: 0 };
+import type { DateFilterPreset, DateRange } from "@/types";
 
 export default function ReportsPage() {
   const { state } = useLedger();
@@ -23,38 +28,19 @@ export default function ReportsPage() {
   });
   const [busy, setBusy] = useState(false);
   const [showMethods, setShowMethods] = useState(false);
-  const [totals, setTotals] = useState<DashboardTotals>(ZERO_TOTALS);
-  const [flats, setFlats] = useState<Array<DashboardTotals & { name: string }>>([]);
 
   const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
-
-  useEffect(() => {
-    const params = new URLSearchParams({
-      from: range.from.toISOString(),
-      to: range.to.toISOString(),
-      flat: selectedFlat,
-      breakdown: "1",
-    });
-    let cancelled = false;
-    fetch(`/api/dashboard?${params}`, { cache: "no-store" })
-      .then(async (response) => {
-        const data = (await response.json()) as {
-          totals?: DashboardTotals;
-          flats?: Array<DashboardTotals & { name: string }>;
-        };
-        if (cancelled) return;
-        setTotals(data.totals ?? ZERO_TOTALS);
-        setFlats(data.flats ?? []);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setTotals(ZERO_TOTALS);
-        setFlats([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [range, selectedFlat, state]);
+  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
+  const expenses = useMemo(() => expenseLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
+  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [range, selectedFlat, state]);
+  const flats = useMemo(
+    () =>
+      state.flats
+        .filter((item) => selectedFlat === "all" || item.name === selectedFlat)
+        .map((item) => ({ name: item.name, ...dashboardTotals(state, range, item.name) })),
+    [range, selectedFlat, state],
+  );
+  const matched = totalsMatchStayLedger(totals, stays, expenses);
   const methods = useMemo(() => {
     const counts = new Map<string, number>();
     for (const payment of state.payments) {
@@ -79,9 +65,19 @@ export default function ReportsPage() {
     return new File([blob], "anas-ledger-report.pdf", { type: "application/pdf" });
   }
 
+  const staysByFlat = useMemo(() => {
+    const groups = new Map<string, typeof stays>();
+    for (const stay of stays) {
+      const list = groups.get(stay.flat) ?? [];
+      list.push(stay);
+      groups.set(stay.flat, list);
+    }
+    return [...groups.entries()];
+  }, [stays]);
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle="Business totals only. No customer names or phones." />
+      <PageHeader title="Reports" subtitle="Summary can be shared. Stay names stay inside the app." />
       <DateFilter
         flats={state.flats}
         selectedFlat={selectedFlat}
@@ -92,11 +88,15 @@ export default function ReportsPage() {
         onCustom={setCustom}
       />
       <Card className="space-y-2">
+        <p className="section-title">Summary</p>
         <Row label="Business" value={formatPKR(totals.business)} />
         <Row label="Received" value={formatPKR(totals.received)} accent="text-primary" />
         <Row label="Pending" value={formatPKR(totals.pending)} accent="text-warning" />
         <Row label="Expenses" value={formatPKR(totals.expenses)} />
       </Card>
+      {!matched ? (
+        <p className="text-sm text-warning">Totals do not match stay rows. Check this period again.</p>
+      ) : null}
       <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
         <input type="checkbox" checked={showMethods} onChange={(event) => setShowMethods(event.target.checked)} />
         Show payment methods
@@ -122,6 +122,38 @@ export default function ReportsPage() {
           </div>
         ))}
       </Card>
+      <div className="space-y-2.5">
+        <h2 className="section-title">Stay detail</h2>
+        <p className="text-xs font-normal text-muted">Internal only. Not included in the shared PDF.</p>
+        {stays.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm font-normal text-muted">
+            No stays in this period.
+          </p>
+        ) : (
+          staysByFlat.map(([flat, rows]) => (
+            <div key={flat} className="overflow-hidden rounded-2xl border border-border bg-surface">
+              <p className="border-b border-border px-3.5 py-2.5 text-sm font-medium">{flat}</p>
+              {rows.map((row) => (
+                <StayLedgerCard key={row.stayId} row={row} showFlat={false} />
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+      {expenses.length > 0 ? (
+        <Card className="space-y-2">
+          <p className="section-title">Expenses</p>
+          {expenses.map((item) => (
+            <div key={item.id} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate font-normal text-muted">
+                {item.description}
+                {item.flat ? ` · ${item.flat}` : ""}
+              </span>
+              <span className="money shrink-0">{formatPKR(item.amount)}</span>
+            </div>
+          ))}
+        </Card>
+      ) : null}
       <div className="grid min-w-0 grid-cols-2 gap-2">
         <Button
           onClick={async () => {

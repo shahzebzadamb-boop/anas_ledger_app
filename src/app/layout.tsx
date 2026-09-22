@@ -7,6 +7,13 @@ export const metadata: Metadata = {
   title: "Anas Ledger",
   description: "Client money management and accounting",
   applicationName: "Anas Ledger",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "192x192" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     title: "Anas Ledger",

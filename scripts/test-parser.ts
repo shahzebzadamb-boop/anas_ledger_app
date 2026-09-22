@@ -1,6 +1,14 @@
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
-import { dashboardTotals } from "../src/lib/ledger";
+import {
+  dashboardTotals,
+  expenseLedgerRows,
+  paymentStayChoices,
+  stayLedgerRows,
+  totalsMatchStayLedger,
+  uniquePaymentStayId,
+} from "../src/lib/ledger";
+import { reducer } from "../src/lib/ledger-actions";
 import { parseAmountToken } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
@@ -297,6 +305,73 @@ if (formatCalcDisplay(calc) !== "0") {
   console.error("CALC AC FAIL", formatCalcDisplay(calc));
 } else {
   console.log("OK calculator AC after error");
+}
+
+const now = new Date("2026-09-22T00:00:00.000Z");
+const monthRange = {
+  from: new Date("2026-09-01T00:00:00.000Z"),
+  to: new Date("2026-09-30T23:59:59.999Z"),
+};
+const rentParsed = parseQuickEntry("tufail khan 03001234567 802a 3 din total 60k 20k advance cash", {
+  knownClients: known,
+  now,
+});
+let ledger = emptyLedgerState();
+if (rentParsed.type === "rent") {
+  ledger = reducer(ledger, { type: "APPLY_QUICK_ENTRY", parsed: rentParsed });
+}
+const stayRows = stayLedgerRows(ledger, monthRange, "802-A");
+const stayTotals = dashboardTotals(ledger, monthRange, "802-A");
+if (
+  stayRows.length !== 1 ||
+  stayRows[0].business !== 60000 ||
+  stayRows[0].received !== 20000 ||
+  stayRows[0].pending !== 40000 ||
+  stayRows[0].payments.length !== 1 ||
+  stayRows[0].payments[0].receivedBy !== "Anas" ||
+  !totalsMatchStayLedger(stayTotals, stayRows, expenseLedgerRows(ledger, monthRange, "802-A"))
+) {
+  failed += 1;
+  console.error("STAY LEDGER FAIL", stayRows[0], stayTotals);
+} else {
+  console.log("OK stay ledger 60k / 20k / 40k");
+}
+
+const followOn = parseQuickEntry("tufail 10k wasol by khizer cash 802a", { knownClients: known, now });
+if (followOn.type === "payment") {
+  ledger = reducer(ledger, { type: "APPLY_QUICK_ENTRY", parsed: followOn });
+}
+const afterPay = stayLedgerRows(ledger, monthRange, "802-A")[0];
+const receivers = new Set(afterPay?.payments.map((item) => item.receivedBy) ?? []);
+if (
+  !afterPay ||
+  afterPay.received !== 30000 ||
+  afterPay.pending !== 30000 ||
+  afterPay.payments.length !== 2 ||
+  !receivers.has("Anas") ||
+  !receivers.has("Khizer")
+) {
+  failed += 1;
+  console.error("FOLLOW-ON PAY FAIL", afterPay);
+} else {
+  console.log("OK same stay received 30k with Anas then Khizer");
+}
+
+const secondStay = parseQuickEntry("tufail khan 03001234567 408b 2 din total 35k", { knownClients: known, now });
+if (secondStay.type === "rent") {
+  ledger = reducer(ledger, { type: "APPLY_QUICK_ENTRY", parsed: secondStay });
+}
+const ambiguousPay = parseQuickEntry("tufail 10k wasol cash", { knownClients: known, now });
+const beforeCount = ledger.payments.length;
+if (ambiguousPay.type === "payment") {
+  ledger = reducer(ledger, { type: "APPLY_QUICK_ENTRY", parsed: ambiguousPay });
+}
+const choices = paymentStayChoices(ledger, ledger.clients[0].id, null);
+if (uniquePaymentStayId(choices) !== null || ledger.payments.length !== beforeCount) {
+  failed += 1;
+  console.error("MULTI STAY GUESS FAIL", choices, ledger.payments.length, beforeCount);
+} else {
+  console.log("OK payment not guessed across multiple open stays");
 }
 
 if (failed) {

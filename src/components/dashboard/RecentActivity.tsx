@@ -1,29 +1,24 @@
-import { formatDateShort } from "@/lib/dates";
-import { formatPKR } from "@/lib/money";
-import type { RecentActivityItem } from "@/lib/ledger";
+import type { StayLedgerRow } from "@/lib/ledger";
+import { StayLedgerCard } from "@/components/dashboard/StayLedgerCard";
 
-export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
+export function RecentActivity({
+  stays,
+  showFlat,
+}: {
+  stays: StayLedgerRow[];
+  showFlat: boolean;
+}) {
   return (
     <section className="space-y-2.5">
       <h2 className="section-title">Recent activity</h2>
-      {items.length === 0 ? (
+      {stays.length === 0 ? (
         <p className="rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm font-normal text-muted">
-          No recent activity yet.
+          No stays yet.
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{item.title}</p>
-                <p className="mt-0.5 text-xs font-normal text-muted">{item.detail}</p>
-                <p className="mt-0.5 text-xs font-normal text-muted">
-                  {item.extra ? `${item.extra} · ` : ""}
-                  {formatDateShort(item.at)}
-                </p>
-              </div>
-              <p className="money shrink-0 text-sm">{formatPKR(item.amount)}</p>
-            </div>
+          {stays.map((row) => (
+            <StayLedgerCard key={row.stayId} row={row} showFlat={showFlat} />
           ))}
         </div>
       )}

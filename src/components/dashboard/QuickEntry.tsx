@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { availableForWithdrawal } from "@/lib/ledger";
+import { availableForWithdrawal, matchClient, paymentStayChoices, uniquePaymentStayId } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import {
   isConfirmable,
@@ -14,6 +14,7 @@ import {
   type TransactionType,
 } from "@/lib/parse-quick-entry";
 import { useLedger } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 const PLACEHOLDER = "Yahan likho kya hua...";
 
@@ -121,6 +122,7 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [stayId, setStayId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const knownClients = useMemo(
     () => state.clients.map((client) => ({ name: client.name, phone: client.phone })),
@@ -134,8 +136,16 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
     return () => window.removeEventListener("focus-quick-entry", focus);
   }, []);
 
+  const stayChoices = useMemo(() => {
+    if (!parsed || parsed.type !== "payment") return [];
+    const client = matchClient(state, parsed.clientName, parsed.phone);
+    if (!client) return [];
+    return paymentStayChoices(state, client.id, parsed.flat);
+  }, [parsed, state]);
+
   function process(forceType?: TransactionType) {
     setError(null);
+    setStayId(null);
     setParsed(forceType ? parseQuickEntry(text, { knownClients }, forceType) : parseQuickEntry(text, { knownClients }));
   }
 
@@ -158,15 +168,24 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
         return;
       }
     }
-    const next =
+    let next: ConfirmableDraft =
       "needsPhone" in parsed && parsed.needsPhone
         ? { ...parsed, phone: phonePrompt.trim(), needsPhone: false }
         : parsed;
+    if (next.type === "payment") {
+      const chosen = stayId ?? uniquePaymentStayId(stayChoices);
+      if (!chosen) {
+        setError(stayChoices.length === 0 ? "No stay for this customer. Record rent first." : "Which stay?");
+        return;
+      }
+      next = { ...next, stayId: chosen };
+    }
     setSaving(true);
     try {
-      await persist({ type: "APPLY_QUICK_ENTRY", parsed: next as ConfirmableDraft });
+      await persist({ type: "APPLY_QUICK_ENTRY", parsed: next });
       setText("");
       setParsed(null);
+      setStayId(null);
       setPhonePrompt("");
       setError(null);
       setSaveFailed(false);
@@ -201,6 +220,7 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
           onChange={(event) => {
             setText(event.target.value);
             setParsed(null);
+            setStayId(null);
             setError(null);
             setSaveFailed(false);
           }}
@@ -232,6 +252,24 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
       {parsed && isConfirmable(parsed) ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-3">
           <ConfirmBody parsed={parsed} />
+          {parsed.type === "payment" && stayChoices.length > 1 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Which stay?</p>
+              {stayChoices.map((choice) => (
+                <button
+                  key={choice.stayId}
+                  type="button"
+                  className={cn("chip w-full justify-start", stayId === choice.stayId && "chip-active")}
+                  onClick={() => setStayId(choice.stayId)}
+                >
+                  {choice.flat} · {choice.nights} night{choice.nights === 1 ? "" : "s"} · {formatPKR(choice.pending)} pending
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {parsed.type === "payment" && stayChoices.length === 0 ? (
+            <p className="text-sm text-warning">No stay for this customer. Record rent first.</p>
+          ) : null}
           {"needsPhone" in parsed && parsed.needsPhone ? (
             <input
               className="w-full rounded-xl border border-border bg-input px-3 text-base"
@@ -241,7 +279,11 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
             />
           ) : null}
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <Button variant="primary" onClick={() => void confirm()} disabled={saving}>
+            <Button
+              variant="primary"
+              onClick={() => void confirm()}
+              disabled={saving || (parsed.type === "payment" && stayChoices.length !== 1 && !stayId)}
+            >
               {saveFailed ? "Retry" : "Confirm"}
             </Button>
             <Button onClick={() => setParsed(null)}>Edit</Button>

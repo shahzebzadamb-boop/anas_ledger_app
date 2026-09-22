@@ -43,6 +43,7 @@ export type PaymentDraft = {
   amount: number;
   method: PaymentMethod;
   receivedByName: string;
+  stayId?: string | null;
 };
 
 export type ExpenseDraft = {
