@@ -12,6 +12,7 @@ import { reducer } from "../src/lib/ledger-actions";
 import { parseAmountToken } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
+import { looksLikeCorrection } from "../src/lib/parse-correction";
 import { detectReceiverName } from "../src/lib/receivers";
 
 const known = [{ name: "Tufail Khan", phone: "923001234567" }];
@@ -372,6 +373,102 @@ if (uniquePaymentStayId(choices) !== null || ledger.payments.length !== beforeCo
   console.error("MULTI STAY GUESS FAIL", choices, ledger.payments.length, beforeCount);
 } else {
   console.log("OK payment not guessed across multiple open stays");
+}
+
+const knownCorr = [{ name: "Tufail Khan", phone: "03001234567" }];
+let corrState = emptyLedgerState();
+const corrRent = parseQuickEntry("tufail khan 03001234567 802a 3 din total 40k 20k advance cash", {
+  knownClients: knownCorr,
+  now,
+});
+if (corrRent.type === "rent") {
+  corrState = reducer(corrState, { type: "APPLY_QUICK_ENTRY", parsed: corrRent });
+}
+const corrAText = "20k received galat pending hai";
+if (!looksLikeCorrection(corrAText)) {
+  failed += 1;
+  console.error("CORR LOOKS FAIL", corrAText);
+}
+const corrA = parseQuickEntry(corrAText, { knownClients: knownCorr, now });
+if (corrA.type === "correction") {
+  corrState = reducer(corrState, { type: "APPLY_CORRECTION", parsed: corrA });
+}
+const rowA = stayLedgerRows(corrState, monthRange, "802-A")[0];
+if (!rowA || rowA.business !== 40000 || rowA.received !== 0 || rowA.pending !== 40000) {
+  failed += 1;
+  console.error("CORR A FAIL", corrA, rowA);
+} else {
+  console.log("OK correction A received voided, business 40k pending 40k");
+}
+
+const corrB = parseQuickEntry("tufail 20k wasol by khizer", { knownClients: knownCorr, now });
+if (corrB.type === "payment") {
+  corrState = reducer(corrState, { type: "APPLY_QUICK_ENTRY", parsed: corrB });
+}
+const rowB = stayLedgerRows(corrState, monthRange, "802-A")[0];
+if (
+  !rowB ||
+  rowB.business !== 40000 ||
+  rowB.received !== 20000 ||
+  rowB.pending !== 20000 ||
+  !rowB.receivedBy.includes("Khizer")
+) {
+  failed += 1;
+  console.error("CORR B FAIL", corrB, rowB);
+} else {
+  console.log("OK correction B 20k Khizer");
+}
+
+const corrCText = "khizer nahi anas ne receive kia";
+const corrC = parseQuickEntry(corrCText, { knownClients: knownCorr, now });
+if (corrC.type === "correction") {
+  corrState = reducer(corrState, { type: "APPLY_CORRECTION", parsed: corrC });
+}
+const rowC = stayLedgerRows(corrState, monthRange, "802-A")[0];
+const livePay = corrState.payments.filter((item) => !item.voided);
+if (
+  !rowC ||
+  rowC.received !== 20000 ||
+  livePay.length !== 1 ||
+  !rowC.receivedBy.includes("Anas") ||
+  rowC.receivedBy.includes("Khizer")
+) {
+  failed += 1;
+  console.error("CORR C FAIL", corrC, rowC, livePay);
+} else {
+  console.log("OK correction C receiver Anas");
+}
+
+const expD = parseQuickEntry("electric 18k 802a", { knownClients: knownCorr, now });
+if (expD.type === "expense") {
+  corrState = reducer(corrState, { type: "APPLY_QUICK_ENTRY", parsed: expD });
+}
+const corrD = parseQuickEntry("electric 18k nahi 8k tha", { knownClients: knownCorr, now });
+if (corrD.type === "correction") {
+  corrState = reducer(corrState, { type: "APPLY_CORRECTION", parsed: corrD });
+}
+const expRow = expenseLedgerRows(corrState, monthRange, "802-A").find((item) => item.description === "Electricity");
+if (!expRow || expRow.amount !== 8000) {
+  failed += 1;
+  console.error("CORR D FAIL", corrD, expRow, corrState.expenses);
+} else {
+  console.log("OK correction D expense 8k");
+}
+
+const expenseId = corrState.expenses.find((item) => item.description === "Electricity" && !item.voided)?.id;
+if (expenseId) {
+  corrState = reducer(corrState, {
+    type: "UPDATE_EXPENSE",
+    payload: { expenseId, amount: 9000 },
+  });
+}
+const expE = corrState.expenses.find((item) => item.id === expenseId);
+const audits = corrState.auditLogs.filter((item) => item.entityId === expenseId);
+if (!expE || expE.amount !== 9000 || audits.length < 2) {
+  failed += 1;
+  console.error("CORR E FAIL", expE, audits);
+} else {
+  console.log("OK correction E manual 9k with audit 18k→8k→9k");
 }
 
 if (failed) {

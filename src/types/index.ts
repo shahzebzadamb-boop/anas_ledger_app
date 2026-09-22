@@ -55,6 +55,7 @@ export type Stay = {
   notifyEnabled: boolean;
   activePending: boolean;
   importKey: string | null;
+  voided?: boolean;
 };
 
 export type RentEntry = {
@@ -65,6 +66,7 @@ export type RentEntry = {
   amount: number;
   occurredAt: string;
   note: string | null;
+  voided?: boolean;
 };
 
 export type Receiver = {
@@ -85,6 +87,7 @@ export type Payment = {
   receivedAt: string;
   notes: string | null;
   receivedById: string | null;
+  voided?: boolean;
 };
 
 export type Expense = {
@@ -97,6 +100,7 @@ export type Expense = {
   method: PaymentMethod;
   spentAt: string;
   notes: string | null;
+  voided?: boolean;
 };
 
 export type SecurityTransaction = {
@@ -108,6 +112,7 @@ export type SecurityTransaction = {
   amount: number;
   occurredAt: string;
   notes: string | null;
+  voided?: boolean;
 };
 
 export type Discount = {
@@ -118,6 +123,7 @@ export type Discount = {
   amount: number;
   occurredAt: string;
   note: string | null;
+  voided?: boolean;
 };
 
 export type Withdrawal = {
@@ -125,6 +131,7 @@ export type Withdrawal = {
   amount: number;
   occurredAt: string;
   note: string | null;
+  voided?: boolean;
 };
 
 export type ActivityLog = {

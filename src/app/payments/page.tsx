@@ -8,11 +8,13 @@ import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { DEFAULT_RECEIVER_NAME, KHIZER_NAME } from "@/lib/receivers";
 import { cn } from "@/lib/utils";
+import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function PaymentsPage() {
   const { state } = useLedger();
   const [filter, setFilter] = useState("all");
-  const payments = [...state.payments].sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1));
+  const [editId, setEditId] = useState<string | null>(null);
+  const payments = [...state.payments].filter((item) => !item.voided).sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1));
   const chips = useMemo(() => {
     const named = [DEFAULT_RECEIVER_NAME, KHIZER_NAME];
     const extras = state.receivers
@@ -73,7 +75,16 @@ export default function PaymentsPage() {
           <p className="px-3.5 py-3 text-sm font-normal text-muted">No payments yet.</p>
         ) : (
           visible.map((payment) => (
-            <div key={payment.id} className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+            <div
+              key={payment.id}
+              role="button"
+              tabIndex={0}
+              className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0"
+              onClick={() => setEditId(payment.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setEditId(payment.id);
+              }}
+            >
               <div className="min-w-0">
                 <p className="font-medium">
                   {state.clients.find((client) => client.id === payment.clientId)?.name ?? "Customer"}
@@ -89,6 +100,7 @@ export default function PaymentsPage() {
           ))
         )}
       </div>
+      {editId ? <EntryEditor kind="payment" id={editId} onClose={() => setEditId(null)} /> : null}
     </div>
   );
 }

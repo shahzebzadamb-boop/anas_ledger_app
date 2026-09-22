@@ -15,6 +15,12 @@ const WRITE_TYPES = new Set<Action["type"]>([
   "APPLY_MIGRATION_UPDATE",
   "SILENCE_CLIENT",
   "MARK_NIGHT_SUMMARY",
+  "APPLY_CORRECTION",
+  "UPDATE_STAY",
+  "UPDATE_PAYMENT",
+  "UPDATE_EXPENSE",
+  "UPDATE_SECURITY",
+  "VOID_ENTRY",
 ]);
 
 export async function POST(request: Request) {

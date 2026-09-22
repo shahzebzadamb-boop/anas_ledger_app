@@ -9,6 +9,7 @@ import { flatName } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/types";
+import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function ExpensesPage() {
   const { state, persist } = useLedger();
@@ -17,8 +18,9 @@ export default function ExpensesPage() {
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].value);
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
   const [flat, setFlat] = useState(state.flats[0]?.name ?? "");
+  const [editId, setEditId] = useState<string | null>(null);
 
-  const expenses = [...state.expenses].sort((a, b) => (a.spentAt < b.spentAt ? 1 : -1));
+  const expenses = [...state.expenses].filter((item) => !item.voided).sort((a, b) => (a.spentAt < b.spentAt ? 1 : -1));
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 
   return (
@@ -83,7 +85,16 @@ export default function ExpensesPage() {
         {expenses.map((expense) => {
           const tag = EXPENSE_CATEGORIES.find((item) => item.value === expense.category)?.label ?? expense.category;
           return (
-            <div key={expense.id} className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+            <div
+              key={expense.id}
+              role="button"
+              tabIndex={0}
+              className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0"
+              onClick={() => setEditId(expense.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setEditId(expense.id);
+              }}
+            >
               <div className="min-w-0">
                 <p className="font-medium">{expense.description}</p>
                 <p className="mt-1 text-sm font-normal text-muted">
@@ -100,6 +111,7 @@ export default function ExpensesPage() {
         })}
       </div>
       )}
+      {editId ? <EntryEditor kind="expense" id={editId} onClose={() => setEditId(null)} /> : null}
     </div>
   );
 }

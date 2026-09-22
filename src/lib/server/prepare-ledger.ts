@@ -162,8 +162,26 @@ export async function runCleanStartIfNeeded(pool: Pool): Promise<CleanStartResul
   return { ran: true, deleted, flatsKept };
 }
 
+export async function ensureCorrectionsSchema(pool: Pool): Promise<void> {
+  const tables = [
+    "stays",
+    "business_entries",
+    "payments",
+    "expenses",
+    "security_transactions",
+    "discounts",
+    "withdrawals",
+  ] as const;
+  for (const table of tables) {
+    if (!(await tableExists(pool, table))) continue;
+    if (await columnExists(pool, table, "voided")) continue;
+    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN voided TINYINT(1) NOT NULL DEFAULT 0`);
+  }
+}
+
 export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResult> {
   await ensureReceiversSchema(pool);
+  await ensureCorrectionsSchema(pool);
   const result = await runCleanStartIfNeeded(pool);
   if (result.ran) {
     console.info("ANAS_CLEAN_START", JSON.stringify(result));

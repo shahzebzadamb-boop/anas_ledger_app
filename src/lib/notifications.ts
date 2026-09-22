@@ -41,7 +41,7 @@ export function dueReminders(state: LedgerState, now = new Date()): AttentionIte
   const stamp = karachiNow(now);
   if (!REMINDER_HOURS.includes(stamp.hour)) return [];
   return state.stays
-    .filter((stay) => isStayPendingActive(stay, state))
+    .filter((stay) => !stay.voided && isStayPendingActive(stay, state))
     .filter((stay) => stayRemaining(stay.id, state) > 0)
     .filter(
       (stay) =>

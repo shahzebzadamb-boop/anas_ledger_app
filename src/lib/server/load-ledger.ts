@@ -39,24 +39,24 @@ export async function loadLedgerState(): Promise<LedgerState> {
       "SELECT id, createdAt, name, phone, phoneNormalized, phoneMissing, notes FROM clients ORDER BY name ASC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, createdAt, flatId, clientId, checkIn, checkOut, nights, notifyEnabled, activePending, importKey FROM stays ORDER BY checkIn DESC",
+      "SELECT id, createdAt, flatId, clientId, checkIn, checkOut, nights, notifyEnabled, activePending, importKey, voided FROM stays ORDER BY checkIn DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, stayId, clientId, flatId, amount, occurredAt, note FROM business_entries ORDER BY occurredAt DESC",
+      "SELECT id, stayId, clientId, flatId, amount, occurredAt, note, voided FROM business_entries ORDER BY occurredAt DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, receivedById FROM payments ORDER BY receivedAt DESC",
+      "SELECT id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, receivedById, voided FROM payments ORDER BY receivedAt DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, createdAt, flatId, amount, category, description, method, spentAt, notes FROM expenses ORDER BY spentAt DESC",
+      "SELECT id, createdAt, flatId, amount, category, description, method, spentAt, notes, voided FROM expenses ORDER BY spentAt DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, clientId, stayId, flatId, kind, amount, occurredAt, notes FROM security_transactions ORDER BY occurredAt DESC",
+      "SELECT id, clientId, stayId, flatId, kind, amount, occurredAt, notes, voided FROM security_transactions ORDER BY occurredAt DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, stayId, clientId, flatId, amount, occurredAt, note FROM discounts ORDER BY occurredAt DESC",
+      "SELECT id, stayId, clientId, flatId, amount, occurredAt, note, voided FROM discounts ORDER BY occurredAt DESC",
     ),
-    pool.query<RowDataPacket[]>("SELECT id, amount, occurredAt, note FROM withdrawals ORDER BY occurredAt DESC"),
+    pool.query<RowDataPacket[]>("SELECT id, amount, occurredAt, note, voided FROM withdrawals ORDER BY occurredAt DESC"),
     pool.query<RowDataPacket[]>(
       `SELECT id, sourceFile, sourceSheet, sourceRow, sourceText, flatName, customer, occurredOn,
               proposedType, amount, reason, status, pendingDecision, stayId, monthLabel,
@@ -111,6 +111,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       notifyEnabled: asBool(row.notifyEnabled),
       activePending: asBool(row.activePending),
       importKey: row.importKey ? String(row.importKey) : null,
+      voided: asBool(row.voided),
     })),
     rentEntries: business.map((row) => ({
       id: String(row.id),
@@ -120,6 +121,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       amount: Number(row.amount),
       occurredAt: toIso(row.occurredAt),
       note: row.note ? String(row.note) : null,
+      voided: asBool(row.voided),
     })),
     payments: payments.map((row) => ({
       id: String(row.id),
@@ -132,6 +134,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       receivedAt: toIso(row.receivedAt),
       notes: row.notes ? String(row.notes) : null,
       receivedById: row.receivedById ? String(row.receivedById) : "recv_anas",
+      voided: asBool(row.voided),
     })),
     expenses: expenses.map((row) => ({
       id: String(row.id),
@@ -143,6 +146,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       method: String(row.method) as PaymentMethod,
       spentAt: toIso(row.spentAt),
       notes: row.notes ? String(row.notes) : null,
+      voided: asBool(row.voided),
     })),
     security: security.map((row) => ({
       id: String(row.id),
@@ -153,6 +157,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       amount: Number(row.amount),
       occurredAt: toIso(row.occurredAt),
       notes: row.notes ? String(row.notes) : null,
+      voided: asBool(row.voided),
     })),
     discounts: discounts.map((row) => ({
       id: String(row.id),
@@ -162,12 +167,14 @@ export async function loadLedgerState(): Promise<LedgerState> {
       amount: Number(row.amount),
       occurredAt: toIso(row.occurredAt),
       note: row.note ? String(row.note) : null,
+      voided: asBool(row.voided),
     })),
     withdrawals: withdrawals.map((row) => ({
       id: String(row.id),
       amount: Number(row.amount),
       occurredAt: toIso(row.occurredAt),
       note: row.note ? String(row.note) : null,
+      voided: asBool(row.voided),
     })),
     reviews: reviews.map((row) => ({
       id: String(row.id),

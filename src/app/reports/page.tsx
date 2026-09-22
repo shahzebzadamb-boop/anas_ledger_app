@@ -46,6 +46,7 @@ export default function ReportsPage() {
     for (const payment of state.payments) {
       const inFlat = selectedFlat === "all" || payment.flatId === `flat_${selectedFlat}`;
       if (!inFlat) continue;
+      if (payment.voided) continue;
       if (!inRange(payment.receivedAt, range)) continue;
       counts.set(payment.method, (counts.get(payment.method) ?? 0) + payment.amount);
     }

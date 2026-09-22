@@ -1,13 +1,15 @@
 import { addDays } from "date-fns";
 import {
-  clientSecurityHeld,
   availableForWithdrawal,
+  clientSecurityHeld,
   paymentStayChoices,
   stayRemaining,
   uniquePaymentStayId,
 } from "@/lib/ledger";
+import { applyCorrection, syncStayPending, withAudit } from "@/lib/corrections";
 import { formatPKR } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
+import type { CorrectionDraft } from "@/lib/parse-correction";
 import type { ConfirmableDraft } from "@/lib/parse-quick-entry";
 import type { MigrationPatch } from "@/lib/parse-migration-update";
 import { canonicalReceiverName, DEFAULT_RECEIVER_NAME, DEFAULT_RECEIVERS } from "@/lib/receivers";
@@ -52,7 +54,55 @@ export type Action =
   | { type: "REVIEW_PENDING"; id: string; decision: PendingDecision }
   | { type: "APPLY_MIGRATION_UPDATE"; id: string; patch: MigrationPatch; correctionText?: string }
   | { type: "SILENCE_CLIENT"; clientId: string; cycleDate: string }
-  | { type: "MARK_NIGHT_SUMMARY"; cycleDate: string };
+  | { type: "MARK_NIGHT_SUMMARY"; cycleDate: string }
+  | { type: "APPLY_CORRECTION"; parsed: CorrectionDraft }
+  | {
+      type: "UPDATE_STAY";
+      payload: {
+        stayId: string;
+        clientName?: string;
+        phone?: string | null;
+        flat?: string | null;
+        checkIn?: string;
+        nights?: number;
+        business?: number;
+        notes?: string | null;
+      };
+    }
+  | {
+      type: "UPDATE_PAYMENT";
+      payload: {
+        paymentId: string;
+        amount?: number;
+        method?: PaymentMethod;
+        receivedById?: string | null;
+        receivedAt?: string;
+        stayId?: string | null;
+      };
+    }
+  | {
+      type: "UPDATE_EXPENSE";
+      payload: {
+        expenseId: string;
+        amount?: number;
+        category?: ExpenseCategory;
+        flat?: string | null;
+        method?: PaymentMethod;
+        description?: string;
+        spentAt?: string;
+      };
+    }
+  | {
+      type: "UPDATE_SECURITY";
+      payload: {
+        securityId: string;
+        amount?: number;
+        flat?: string | null;
+        clientId?: string;
+        kind?: "RECEIVED" | "ADJUSTED_TO_RENT";
+      };
+    }
+  | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } };
 
 function asDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
@@ -157,6 +207,7 @@ function addStayDiscount(state: LedgerState, stayId: string, amount: number, not
     amount,
     occurredAt: nowISO(),
     note,
+    voided: false,
   };
   return { ...state, discounts: [discount, ...state.discounts] };
 }
@@ -173,6 +224,7 @@ function addStayRent(state: LedgerState, stayId: string, amount: number, note: s
     amount,
     occurredAt: nowISO(),
     note,
+    voided: false,
   };
   return { ...state, rentEntries: [rent, ...state.rentEntries] };
 }
@@ -363,7 +415,7 @@ function applyMigrationPatch(
 
 function openStayFor(state: LedgerState, clientId: string, flatName: string | null) {
   const open = state.stays
-    .filter((stay) => stay.clientId === clientId && stayRemaining(stay.id, state) > 0)
+    .filter((stay) => !stay.voided && stay.clientId === clientId && stayRemaining(stay.id, state) > 0)
     .filter((stay) => !flatName || stay.flatId === `flat_${flatName}`)
     .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0];
   return open ?? null;
@@ -390,10 +442,11 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
     receivedAt: nowISO(),
     notes: null,
     receivedById: receiver.id,
+    voided: false,
   };
   const client = next.clients.find((item) => item.id === input.clientId);
   const cycleDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
-  return withActivity(
+  next = withActivity(
     {
       ...next,
       payments: [payment, ...next.payments],
@@ -411,6 +464,7 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
       summary: `Received ${formatPKR(input.amount)} from ${client?.name ?? "customer"}.`,
     },
   );
+  return syncStayPending(next, stayId);
 }
 
 function withDefaultReceivers(state: LedgerState): LedgerState {
@@ -431,11 +485,18 @@ function normalizeState(state: LedgerState): LedgerState {
       ...stay,
       activePending: stay.activePending ?? false,
       notifyEnabled: stay.notifyEnabled ?? false,
+      voided: stay.voided ?? false,
     })),
+    rentEntries: (state.rentEntries ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     payments: state.payments.map((item) => ({
       ...item,
       receivedById: item.receivedById ?? "recv_anas",
+      voided: item.voided ?? false,
     })),
+    expenses: (state.expenses ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
+    security: (state.security ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
+    discounts: (state.discounts ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
+    withdrawals: (state.withdrawals ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     reviews: state.reviews.map((item) => ({
       ...item,
       month: item.month ?? item.sourceSheet,
@@ -467,6 +528,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         method: action.payload.method,
         spentAt: nowISO(),
         notes: null,
+        voided: false,
       };
       return withActivity(
         { ...state, expenses: [expense, ...state.expenses] },
@@ -569,8 +631,192 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         ...state,
         nightSummaryDates: Array.from(new Set([...state.nightSummaryDates, action.cycleDate])),
       };
+    case "APPLY_CORRECTION":
+      return applyCorrection(state, action.parsed, "QUICK_ENTRY");
+    case "UPDATE_STAY": {
+      const stay = state.stays.find((item) => item.id === action.payload.stayId);
+      if (!stay) return state;
+      let next = state;
+      if (action.payload.clientName || action.payload.phone !== undefined) {
+        next = {
+          ...next,
+          clients: next.clients.map((client) =>
+            client.id === stay.clientId
+              ? {
+                  ...client,
+                  name: action.payload.clientName?.trim() || client.name,
+                  phone: action.payload.phone !== undefined ? (action.payload.phone ? normalizePhone(action.payload.phone) : null) : client.phone,
+                  phoneMissing: action.payload.phone !== undefined ? !action.payload.phone : client.phoneMissing,
+                }
+              : client,
+          ),
+        };
+      }
+      const nights = action.payload.nights ?? stay.nights;
+      const checkIn = action.payload.checkIn ?? stay.checkIn;
+      const nextStay = {
+        ...stay,
+        flatId: action.payload.flat ? `flat_${action.payload.flat}` : stay.flatId,
+        checkIn,
+        nights,
+        checkOut: addDays(new Date(checkIn), nights).toISOString(),
+      };
+      next = { ...next, stays: next.stays.map((item) => (item.id === stay.id ? nextStay : item)) };
+      if (action.payload.flat) {
+        const flatId = `flat_${action.payload.flat}`;
+        next = {
+          ...next,
+          rentEntries: next.rentEntries.map((item) => (item.stayId === stay.id ? { ...item, flatId } : item)),
+          payments: next.payments.map((item) => (item.stayId === stay.id ? { ...item, flatId } : item)),
+        };
+      }
+      if (action.payload.business != null) {
+        const rents = next.rentEntries.filter((item) => item.stayId === stay.id && !item.voided);
+        const row = rents[0];
+        if (row) {
+          next = {
+            ...next,
+            rentEntries: next.rentEntries.map((item) => (item.id === row.id ? { ...item, amount: action.payload.business as number } : item)),
+          };
+        }
+      }
+      if (action.payload.notes !== undefined) {
+        const row = next.rentEntries.find((item) => item.stayId === stay.id);
+        if (row) {
+          next = {
+            ...next,
+            rentEntries: next.rentEntries.map((item) => (item.id === row.id ? { ...item, note: action.payload.notes ?? null } : item)),
+          };
+        }
+      }
+      next = withAudit(next, {
+        action: "MANUAL_EDIT",
+        entityType: "Stay",
+        entityId: stay.id,
+        originalValue: stay,
+        newValue: nextStay,
+        reason: "Manual edit",
+      });
+      return syncStayPending(next, stay.id);
+    }
+    case "UPDATE_PAYMENT": {
+      const payment = state.payments.find((item) => item.id === action.payload.paymentId);
+      if (!payment) return state;
+      const stay = action.payload.stayId
+        ? state.stays.find((item) => item.id === action.payload.stayId)
+        : state.stays.find((item) => item.id === payment.stayId);
+      const nextPay: Payment = {
+        ...payment,
+        amount: action.payload.amount ?? payment.amount,
+        method: action.payload.method ?? payment.method,
+        receivedById: action.payload.receivedById ?? payment.receivedById,
+        receivedAt: action.payload.receivedAt ?? payment.receivedAt,
+        stayId: action.payload.stayId ?? payment.stayId,
+        flatId: stay?.flatId ?? payment.flatId,
+        clientId: stay?.clientId ?? payment.clientId,
+      };
+      let next: LedgerState = {
+        ...state,
+        payments: state.payments.map((item) => (item.id === payment.id ? nextPay : item)),
+      };
+      next = withAudit(next, {
+        action: "MANUAL_EDIT",
+        entityType: "Payment",
+        entityId: payment.id,
+        originalValue: payment,
+        newValue: nextPay,
+        reason: "Manual edit",
+      });
+      next = syncStayPending(next, payment.stayId);
+      return syncStayPending(next, nextPay.stayId);
+    }
+    case "UPDATE_EXPENSE": {
+      const expense = state.expenses.find((item) => item.id === action.payload.expenseId);
+      if (!expense) return state;
+      const nextExp: Expense = {
+        ...expense,
+        amount: action.payload.amount ?? expense.amount,
+        category: action.payload.category ?? expense.category,
+        flatId: action.payload.flat !== undefined ? (action.payload.flat ? `flat_${action.payload.flat}` : null) : expense.flatId,
+        method: action.payload.method ?? expense.method,
+        description: action.payload.description ?? expense.description,
+        spentAt: action.payload.spentAt ?? expense.spentAt,
+      };
+      return withAudit(
+        { ...state, expenses: state.expenses.map((item) => (item.id === expense.id ? nextExp : item)) },
+        {
+          action: "MANUAL_EDIT",
+          entityType: "Expense",
+          entityId: expense.id,
+          originalValue: expense,
+          newValue: nextExp,
+          reason: "Manual edit",
+        },
+      );
+    }
+    case "UPDATE_SECURITY": {
+      const row = state.security.find((item) => item.id === action.payload.securityId);
+      if (!row) return state;
+      const nextRow = {
+        ...row,
+        amount: action.payload.amount ?? row.amount,
+        flatId: action.payload.flat !== undefined ? (action.payload.flat ? `flat_${action.payload.flat}` : null) : row.flatId,
+        clientId: action.payload.clientId ?? row.clientId,
+        kind: action.payload.kind ?? row.kind,
+      };
+      let next: LedgerState = {
+        ...state,
+        security: state.security.map((item) => (item.id === row.id ? nextRow : item)),
+      };
+      next = withAudit(next, {
+        action: "MANUAL_EDIT",
+        entityType: "Security",
+        entityId: row.id,
+        originalValue: row,
+        newValue: nextRow,
+        reason: "Manual edit",
+      });
+      return syncStayPending(next, row.stayId);
+    }
+    case "VOID_ENTRY":
+      return applyCorrection(
+        state,
+        {
+          type: "correction",
+          kind: "void_entry",
+          raw: "Void this entry?",
+          clientName: null,
+          phone: null,
+          flat: null,
+          amount: null,
+          newAmount: null,
+          nights: null,
+          newNights: null,
+          method: null,
+          newMethod: null,
+          receivedByName: null,
+          newReceivedByName: null,
+          newFlat: null,
+          newClientName: null,
+          description: null,
+          category: null,
+          targetId: action.payload.entityId,
+          targetKind:
+            action.payload.entityType === "Stay"
+              ? "stay"
+              : action.payload.entityType === "Expense"
+                ? "expense"
+                : action.payload.entityType === "Security"
+                  ? "security"
+                  : "payment",
+        },
+        "MANUAL_EDIT",
+      );
     case "APPLY_QUICK_ENTRY": {
       const parsed = action.parsed;
+      if (parsed.type === "correction") {
+        return applyCorrection(state, parsed, "QUICK_ENTRY");
+      }
       if (parsed.type === "expense") {
         return reducer(state, {
           type: "ADD_EXPENSE",
@@ -585,6 +831,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.amount,
           occurredAt: nowISO(),
           note: parsed.note,
+          voided: false,
         };
         return withActivity(
           { ...state, withdrawals: [withdrawal, ...state.withdrawals] },
@@ -602,7 +849,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         : "phone" in parsed
           ? parsed.phone
           : null;
-      const name = "clientName" in parsed ? parsed.clientName : "";
+      const name = "clientName" in parsed && parsed.clientName ? parsed.clientName : "";
       const found = findClient(state, name, phone);
       let next = found.state;
       const client = found.client;
@@ -631,6 +878,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.amount,
           occurredAt: nowISO(),
           notes: null,
+          voided: false,
         };
         return withActivity(
           { ...next, security: [row, ...next.security] },
@@ -656,6 +904,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount,
           occurredAt: nowISO(),
           notes: "Security applied to rent. No new cash.",
+          voided: false,
         };
         return withActivity(
           { ...next, security: [row, ...next.security] },
@@ -679,6 +928,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.amount,
           occurredAt: nowISO(),
           note: null,
+          voided: false,
         };
         return withActivity(
           { ...next, discounts: [discount, ...next.discounts] },
@@ -702,6 +952,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.extraRevenue,
           occurredAt: nowISO(),
           note: `Extended ${parsed.extraNights} days`,
+          voided: false,
         };
         return withActivity(
           {
@@ -741,6 +992,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           notifyEnabled: parsed.remaining > 0,
           activePending: parsed.remaining > 0,
           importKey: null,
+          voided: false,
         };
         const rent = {
           id: createId("rent"),
@@ -750,6 +1002,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.totalAmount,
           occurredAt: asDate(parsed.checkIn).toISOString(),
           note: null,
+          voided: false,
         };
         next = {
           ...next,

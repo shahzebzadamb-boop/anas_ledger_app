@@ -7,6 +7,7 @@ import {
   hasReceiverSignal,
   stripReceiverForNameDetection,
 } from "@/lib/receivers";
+import { looksLikeCorrection, parseCorrection, type CorrectionDraft } from "@/lib/parse-correction";
 import type { ExpenseCategory, PaymentMethod } from "@/types";
 
 export type TransactionType =
@@ -102,7 +103,8 @@ export type ConfirmableDraft =
   | SecurityAdjustDraft
   | DiscountDraft
   | ExtensionDraft
-  | WithdrawalDraft;
+  | WithdrawalDraft
+  | CorrectionDraft;
 
 export type ParsedQuickEntry =
   | ConfirmableDraft
@@ -146,6 +148,8 @@ const STOP_WORDS = new Set(
     "withdrawal", "nikal", "nikala", "liya", "lia", "flat", "ko", "ka", "ki", "ke", "se", "mein", "mai",
     "ne", "aur", "tha", "thi", "hai", "the", "and", "for", "from", "to", "with", "another",
     "number", "customer", "guest", "khizer", "khizar", "khizr", "pas", "by",
+    "galat", "wrong", "nahi", "nai", "actually", "change", "fix", "correct", "void", "delete",
+    "karo", "wala", "ye", "entry",
   ],
 );
 
@@ -336,6 +340,10 @@ export function parseQuickEntry(
   forceType?: TransactionType,
 ): ParsedQuickEntry {
   const text = raw.trim().replace(/\s+/g, " ");
+  if (!text) return { type: "ambiguous", reason: "Yahan likho kya hua." };
+  if (!forceType && looksLikeCorrection(text)) {
+    return parseCorrection(text, ctx);
+  }
   const now = startOfDay(ctx.now ?? new Date());
   const flat = detectFlat(text);
   const phone = detectPhone(text);
@@ -345,8 +353,6 @@ export function parseQuickEntry(
   const method = detectMethod(text);
   const type = forceType ?? classify(text);
   const nights = nightsFrom(text) || 1;
-
-  if (!text) return { type: "ambiguous", reason: "Yahan likho kya hua." };
 
   if (type === "ANAS_WITHDRAWAL") {
     const amount = money[0];

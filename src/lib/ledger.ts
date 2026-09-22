@@ -8,6 +8,10 @@ import type {
 import { inRange } from "@/lib/dates";
 import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
 
+export function isLive<T extends { voided?: boolean }>(item: T): boolean {
+  return !item.voided;
+}
+
 export function receiverName(state: LedgerState, receiverId: string | null | undefined): string {
   if (!receiverId) return "Anas";
   return state.receivers.find((item) => item.id === receiverId)?.name ?? "Anas";
@@ -20,25 +24,25 @@ export function flatName(state: LedgerState, flatId: string | null | undefined):
 
 export function stayRevenue(stayId: string, state: LedgerState): number {
   return state.rentEntries
-    .filter((item) => item.stayId === stayId && isPlausibleLedgerAmount(item.amount))
+    .filter((item) => item.stayId === stayId && isLive(item) && isPlausibleLedgerAmount(item.amount))
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
 export function stayDiscounts(stayId: string, state: LedgerState): number {
   return state.discounts
-    .filter((item) => item.stayId === stayId)
+    .filter((item) => item.stayId === stayId && isLive(item))
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
 export function stayPayments(stayId: string, state: LedgerState): number {
   return state.payments
-    .filter((item) => item.stayId === stayId && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
+    .filter((item) => item.stayId === stayId && isLive(item) && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
 export function staySecurityApplied(stayId: string, state: LedgerState): number {
   return state.security
-    .filter((item) => item.stayId === stayId && item.kind === "ADJUSTED_TO_RENT")
+    .filter((item) => item.stayId === stayId && isLive(item) && item.kind === "ADJUSTED_TO_RENT")
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
@@ -55,7 +59,7 @@ export function stayRemaining(stayId: string, state: LedgerState): number {
 
 export function clientSecurityHeld(clientId: string, state: LedgerState): number {
   return state.security
-    .filter((item) => item.clientId === clientId)
+    .filter((item) => item.clientId === clientId && isLive(item))
     .reduce((sum, item) => {
       if (item.kind === "RECEIVED") return sum + item.amount;
       return sum - item.amount;
@@ -122,7 +126,7 @@ export function paymentStayChoices(
   selectedFlat: string | null,
 ): StayChoice[] {
   const stays = state.stays
-    .filter((stay) => stay.clientId === clientId)
+    .filter((stay) => isLive(stay) && stay.clientId === clientId)
     .filter((stay) => !selectedFlat || stay.flatId === `flat_${selectedFlat}` || stay.flatId === selectedFlat);
   const toChoice = (stay: Stay): StayChoice => ({
     stayId: stay.id,
@@ -212,10 +216,10 @@ export type ExpenseLedgerRow = {
 
 export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFlat: string): StayLedgerRow[] {
   return state.stays
-    .filter((stay) => matchesFlat(stay.flatId, selectedFlat) && stayTouchesRange(stay, state, range))
+    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && stayTouchesRange(stay, state, range))
     .map((stay) => {
       const payments = state.payments
-        .filter((item) => item.stayId === stay.id && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
+        .filter((item) => item.stayId === stay.id && isLive(item) && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
         .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
       const methods = [...new Set(payments.map((item) => methodLabel(item.method)))];
       const receivedBy = [...new Set(payments.map((item) => receiverName(state, item.receivedById)))];
@@ -243,13 +247,13 @@ export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFla
           receivedBy: receiverName(state, item.receivedById),
         })),
         security: state.security
-          .filter((item) => item.stayId === stay.id)
+          .filter((item) => item.stayId === stay.id && isLive(item))
           .map((item) => ({ id: item.id, amount: item.amount, kind: item.kind, at: item.occurredAt })),
         discounts: state.discounts
-          .filter((item) => item.stayId === stay.id)
+          .filter((item) => item.stayId === stay.id && isLive(item))
           .map((item) => ({ id: item.id, amount: item.amount, at: item.occurredAt, note: item.note })),
         extensionNotes: state.rentEntries
-          .filter((item) => item.stayId === stay.id && item.note)
+          .filter((item) => item.stayId === stay.id && isLive(item) && item.note)
           .map((item) => item.note as string),
       };
     })
@@ -264,6 +268,7 @@ export function expenseLedgerRows(
   return state.expenses
     .filter(
       (item) =>
+        isLive(item) &&
         matchesFlat(item.flatId, selectedFlat) &&
         inRange(item.spentAt, range) &&
         isPlausibleLedgerAmount(item.amount) &&
@@ -314,18 +319,18 @@ export function totalsMatchStayLedger(
 
 export function availableForWithdrawal(state: LedgerState): number {
   const received = state.payments
-    .filter((item) => isRentPayment(item, state.reviews))
+    .filter((item) => isLive(item) && isRentPayment(item, state.reviews))
     .reduce((sum, item) => sum + item.amount, 0);
   const expenses = state.expenses
-    .filter((item) => isConfirmedExpense(item, state.reviews))
+    .filter((item) => isLive(item) && isConfirmedExpense(item, state.reviews))
     .reduce((sum, item) => sum + item.amount, 0);
-  const withdrawals = state.withdrawals.reduce((sum, item) => sum + item.amount, 0);
+  const withdrawals = state.withdrawals.filter(isLive).reduce((sum, item) => sum + item.amount, 0);
   return Math.max(0, received - expenses - withdrawals);
 }
 
 export function needsAttention(state: LedgerState, selectedFlat = "all"): AttentionItem[] {
   return state.stays
-    .filter((stay) => matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
+    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
     .map((stay) => {
       const client = state.clients.find((item) => item.id === stay.clientId);
       return {
@@ -449,14 +454,14 @@ export function recentActivity(state: LedgerState, limit = 8): RecentActivityIte
 }
 
 export function clientProfile(clientId: string, state: LedgerState) {
-  const stays = state.stays.filter((item) => item.clientId === clientId);
+  const stays = state.stays.filter((item) => item.clientId === clientId && isLive(item));
   const lastStay = [...stays].sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1))[0];
   return {
     totalStays: stays.length,
     lifetimeBusiness: stays.reduce((sum, stay) => sum + stayCollectible(stay.id, state), 0),
     lifetimeRevenue: stays.reduce((sum, stay) => sum + stayCollectible(stay.id, state), 0),
     totalReceived: state.payments
-      .filter((item) => item.clientId === clientId)
+      .filter((item) => item.clientId === clientId && isLive(item))
       .reduce((sum, item) => sum + item.amount, 0),
     currentlyPending: stays
       .filter((stay) => isStayPendingActive(stay, state))

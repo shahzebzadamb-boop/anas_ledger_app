@@ -5,6 +5,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { availableForWithdrawal, matchClient, paymentStayChoices, uniquePaymentStayId } from "@/lib/ledger";
+import {
+  correctionPreview,
+  correctionQuestion,
+  correctionTargets,
+  uniqueTarget,
+  type CorrectionPreview,
+  type CorrectionTarget,
+} from "@/lib/corrections";
 import { formatPKR, methodLabel } from "@/lib/money";
 import {
   isConfirmable,
@@ -13,6 +21,7 @@ import {
   type ParsedQuickEntry,
   type TransactionType,
 } from "@/lib/parse-quick-entry";
+import type { CorrectionDraft } from "@/lib/parse-correction";
 import { useLedger } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +37,7 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 function ConfirmBody({ parsed }: { parsed: ConfirmableDraft }) {
+  if (parsed.type === "correction") return null;
   if (parsed.type === "rent") {
     return (
       <>
@@ -114,6 +124,24 @@ function ConfirmBody({ parsed }: { parsed: ConfirmableDraft }) {
   );
 }
 
+function CorrectionBody({ preview }: { preview: CorrectionPreview }) {
+  return (
+    <>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">{preview.title}</p>
+      <p className="text-sm font-medium">{preview.clientName}</p>
+      {preview.flat ? <p className="text-sm text-muted">Flat {preview.flat}</p> : null}
+      <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">Before</p>
+      {preview.before.map((row) => (
+        <Field key={`b-${row.label}`} label={row.label} value={row.value} />
+      ))}
+      <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">After</p>
+      {preview.after.map((row) => (
+        <Field key={`a-${row.label}`} label={row.label} value={row.value} />
+      ))}
+    </>
+  );
+}
+
 export function QuickEntry({ onAdded }: { onAdded: () => void }) {
   const { state, persist } = useLedger();
   const [text, setText] = useState("");
@@ -123,6 +151,7 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
   const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stayId, setStayId] = useState<string | null>(null);
+  const [correctionId, setCorrectionId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const knownClients = useMemo(
     () => state.clients.map((client) => ({ name: client.name, phone: client.phone })),
@@ -143,9 +172,25 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
     return paymentStayChoices(state, client.id, parsed.flat);
   }, [parsed, state]);
 
+  const correctionChoices = useMemo((): CorrectionTarget[] => {
+    if (!parsed || parsed.type !== "correction") return [];
+    return correctionTargets(state, parsed);
+  }, [parsed, state]);
+
+  const selectedCorrection = useMemo(() => {
+    if (!parsed || parsed.type !== "correction") return null;
+    return correctionChoices.find((item) => item.id === correctionId) ?? uniqueTarget(correctionChoices);
+  }, [parsed, correctionChoices, correctionId]);
+
+  const preview = useMemo((): CorrectionPreview | null => {
+    if (!parsed || parsed.type !== "correction" || !selectedCorrection) return null;
+    return correctionPreview(state, parsed, selectedCorrection);
+  }, [parsed, selectedCorrection, state]);
+
   function process(forceType?: TransactionType) {
     setError(null);
     setStayId(null);
+    setCorrectionId(null);
     setParsed(forceType ? parseQuickEntry(text, { knownClients }, forceType) : parseQuickEntry(text, { knownClients }));
   }
 
@@ -172,6 +217,35 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
       "needsPhone" in parsed && parsed.needsPhone
         ? { ...parsed, phone: phonePrompt.trim(), needsPhone: false }
         : parsed;
+    if (next.type === "correction") {
+      const chosen = selectedCorrection ?? uniqueTarget(correctionChoices);
+      if (!chosen) {
+        setError(correctionChoices.length === 0 ? "Could not find that entry." : correctionQuestion(next));
+        return;
+      }
+      const draft: CorrectionDraft =
+        chosen.kind === "client"
+          ? { ...next, newClientId: chosen.id, targetId: next.targetId ?? null }
+          : { ...next, targetId: chosen.id, targetKind: chosen.kind };
+      setSaving(true);
+      try {
+        await persist({ type: "APPLY_CORRECTION", parsed: draft });
+        setText("");
+        setParsed(null);
+        setStayId(null);
+        setCorrectionId(null);
+        setPhonePrompt("");
+        setError(null);
+        setSaveFailed(false);
+        onAdded();
+      } catch {
+        setSaveFailed(true);
+        setError("Save failed. Your text is still here.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (next.type === "payment") {
       const chosen = stayId ?? uniquePaymentStayId(stayChoices);
       if (!chosen) {
@@ -221,6 +295,7 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
             setText(event.target.value);
             setParsed(null);
             setStayId(null);
+            setCorrectionId(null);
             setError(null);
             setSaveFailed(false);
           }}
@@ -251,7 +326,31 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
 
       {parsed && isConfirmable(parsed) ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-3">
-          <ConfirmBody parsed={parsed} />
+          {parsed.type === "correction" ? (
+            <>
+              {preview ? <CorrectionBody preview={preview} /> : <p className="text-sm font-medium">CORRECTION</p>}
+              {correctionChoices.length > 1 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{correctionQuestion(parsed)}</p>
+                  {correctionChoices.map((choice) => (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      className={cn("chip w-full justify-start", correctionId === choice.id && "chip-active")}
+                      onClick={() => setCorrectionId(choice.id)}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {correctionChoices.length === 0 ? (
+                <p className="text-sm text-warning">Could not find that entry.</p>
+              ) : null}
+            </>
+          ) : (
+            <ConfirmBody parsed={parsed} />
+          )}
           {parsed.type === "payment" && stayChoices.length > 1 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Which stay?</p>
@@ -282,7 +381,11 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
             <Button
               variant="primary"
               onClick={() => void confirm()}
-              disabled={saving || (parsed.type === "payment" && stayChoices.length !== 1 && !stayId)}
+              disabled={
+                saving ||
+                (parsed.type === "payment" && stayChoices.length !== 1 && !stayId) ||
+                (parsed.type === "correction" && !selectedCorrection)
+              }
             >
               {saveFailed ? "Retry" : "Confirm"}
             </Button>

@@ -20,11 +20,13 @@ import {
 import { formatPKR, methodLabel } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import { useLedger } from "@/lib/store";
+import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
   const { state, persist } = useLedger();
   const [phone, setPhone] = useState("");
+  const [edit, setEdit] = useState<{ kind: "stay" | "payment" | "security"; id: string } | null>(null);
   const client = state.clients.find((item) => item.id === params.id);
 
   if (!client) {
@@ -98,7 +100,12 @@ export default function ClientDetailPage() {
       </p>
 
       {profile.stays.map((stay) => (
-        <div key={stay.id} className="border-b border-border py-2.5 last:border-b-0">
+        <button
+          key={stay.id}
+          type="button"
+          className="w-full border-b border-border py-2.5 text-left last:border-b-0"
+          onClick={() => setEdit({ kind: "stay", id: stay.id })}
+        >
           <p className="font-semibold">Flat {flatName(state, stay.flatId)}</p>
           <p className="mt-0.5 text-sm font-normal text-muted">
             {formatDate(stay.checkIn)} · {stay.nights} days
@@ -108,21 +115,26 @@ export default function ClientDetailPage() {
             {" · "}Collectible <span className="money text-foreground">{formatPKR(stayCollectible(stay.id, state))}</span>
             {" · "}Pending <span className="money text-warning">{formatPKR(stayRemaining(stay.id, state))}</span>
           </p>
-        </div>
+        </button>
       ))}
 
       <section>
         <h2 className="section-title mb-2">History</h2>
         <div className="overflow-hidden rounded-2xl border border-border bg-surface empty:hidden">
-          {state.rentEntries.filter((item) => item.clientId === client.id).map((item) => (
+          {state.rentEntries.filter((item) => item.clientId === client.id && !item.voided).map((item) => (
             <TimelineRow
               key={item.id}
               title={`Rent ${formatPKR(item.amount)}`}
               detail={`${formatDate(item.occurredAt)}${item.note ? ` · ${item.note}` : ""}`}
             />
           ))}
-          {state.payments.filter((item) => item.clientId === client.id).map((item) => (
-            <div key={item.id} className="border-b border-border px-3.5 py-2.5 last:border-b-0">
+          {state.payments.filter((item) => item.clientId === client.id && !item.voided).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="block w-full border-b border-border px-3.5 py-2.5 text-left last:border-b-0"
+              onClick={() => setEdit({ kind: "payment", id: item.id })}
+            >
               <p className="text-xs font-normal text-muted">{formatDate(item.receivedAt)}</p>
               <p className="mt-0.5 text-sm font-medium">{formatPKR(item.amount)}</p>
               <p className="mt-0.5 text-xs font-normal text-muted">
@@ -131,16 +143,22 @@ export default function ClientDetailPage() {
               {item.flatId ? (
                 <p className="mt-0.5 text-xs font-normal text-muted">Flat {flatName(state, item.flatId)}</p>
               ) : null}
-            </div>
+            </button>
           ))}
-          {state.security.filter((item) => item.clientId === client.id).map((item) => (
-            <TimelineRow
+          {state.security.filter((item) => item.clientId === client.id && !item.voided).map((item) => (
+            <button
               key={item.id}
-              title={`${item.kind === "RECEIVED" ? "Security" : "Security adjusted"} ${formatPKR(item.amount)}`}
-              detail={formatDate(item.occurredAt)}
-            />
+              type="button"
+              className="block w-full text-left"
+              onClick={() => setEdit({ kind: "security", id: item.id })}
+            >
+              <TimelineRow
+                title={`${item.kind === "RECEIVED" ? "Security" : "Security adjusted"} ${formatPKR(item.amount)}`}
+                detail={formatDate(item.occurredAt)}
+              />
+            </button>
           ))}
-          {state.discounts.filter((item) => item.clientId === client.id).map((item) => (
+          {state.discounts.filter((item) => item.clientId === client.id && !item.voided).map((item) => (
             <TimelineRow
               key={item.id}
               title={`Discount ${formatPKR(item.amount)}`}
@@ -149,6 +167,7 @@ export default function ClientDetailPage() {
           ))}
         </div>
       </section>
+      {edit ? <EntryEditor kind={edit.kind} id={edit.id} onClose={() => setEdit(null)} /> : null}
     </div>
   );
 }

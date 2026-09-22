@@ -6,6 +6,7 @@ import { formatPKR } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import type { StayLedgerRow } from "@/lib/ledger";
 import { cn } from "@/lib/utils";
+import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 function MoneyRow({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
@@ -24,13 +25,21 @@ export function StayLedgerCard({
   showFlat: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState<{ kind: "stay" | "payment"; id: string } | null>(null);
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className="w-full px-3.5 py-3 text-left"
         onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((value) => !value);
+          }
+        }}
         aria-expanded={open}
       >
         <div className="flex items-start justify-between gap-3">
@@ -57,25 +66,37 @@ export function StayLedgerCard({
             {row.receivedBy.length > 0 ? ` · Received by ${row.receivedBy.join(", ")}` : ""}
           </p>
         ) : null}
-      </button>
+      </div>
       {open ? (
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
           {showFlat ? (
             <p className="text-xs font-normal text-muted">{formatStayDates(row.checkIn, row.checkOut)}</p>
           ) : null}
           {row.phone ? <p className="text-xs font-normal text-muted">{displayPhone(row.phone)}</p> : null}
+          <button
+            type="button"
+            className="text-sm font-medium text-secondary"
+            onClick={() => setEdit({ kind: "stay", id: row.stayId })}
+          >
+            Edit
+          </button>
           {row.payments.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payments</p>
               {row.payments.map((payment) => (
-                <div key={payment.id}>
+                <button
+                  key={payment.id}
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={() => setEdit({ kind: "payment", id: payment.id })}
+                >
                   <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
                   <p className="text-sm">
                     <span className="money">{formatPKR(payment.amount)}</span>
                     <span className="text-muted"> · {payment.method}</span>
                   </p>
                   <p className="text-xs font-normal text-muted">Received by {payment.receivedBy}</p>
-                </div>
+                </button>
               ))}
               <MoneyRow label="Total received" value={row.received} accent="text-primary" />
               <MoneyRow label="Pending" value={row.pending} accent={row.pending > 0 ? "text-warning" : undefined} />
@@ -101,6 +122,7 @@ export function StayLedgerCard({
           ))}
         </div>
       ) : null}
+      {edit ? <EntryEditor kind={edit.kind} id={edit.id} onClose={() => setEdit(null)} /> : null}
     </div>
   );
 }
