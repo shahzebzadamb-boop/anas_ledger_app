@@ -1,3 +1,4 @@
+import { DEFAULT_RECEIVERS } from "@/lib/receivers";
 import { FLAT_NAMES } from "@/types";
 import type { LedgerState } from "@/types";
 
@@ -8,6 +9,7 @@ export function emptyLedgerState(): LedgerState {
       name,
       sortOrder: index + 1,
     })),
+    receivers: DEFAULT_RECEIVERS.map((item) => ({ ...item })),
     clients: [],
     stays: [],
     rentEntries: [],

@@ -10,13 +10,14 @@ import { formatDate } from "@/lib/dates";
 import {
   clientProfile,
   flatName,
+  receiverName,
   reminderMessage,
   stayCollectible,
   stayRemaining,
   stayRevenue,
   whatsappLink,
 } from "@/lib/ledger";
-import { formatPKR } from "@/lib/money";
+import { formatPKR, methodLabel } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import { useLedger } from "@/lib/store";
 
@@ -121,11 +122,16 @@ export default function ClientDetailPage() {
             />
           ))}
           {state.payments.filter((item) => item.clientId === client.id).map((item) => (
-            <TimelineRow
-              key={item.id}
-              title={`Payment ${formatPKR(item.amount)}`}
-              detail={formatDate(item.receivedAt)}
-            />
+            <div key={item.id} className="border-b border-border px-3.5 py-2.5 last:border-b-0">
+              <p className="text-xs font-normal text-muted">{formatDate(item.receivedAt)}</p>
+              <p className="mt-0.5 text-sm font-medium">{formatPKR(item.amount)}</p>
+              <p className="mt-0.5 text-xs font-normal text-muted">
+                {methodLabel(item.method)} · {receiverName(state, item.receivedById)}
+              </p>
+              {item.flatId ? (
+                <p className="mt-0.5 text-xs font-normal text-muted">Flat {flatName(state, item.flatId)}</p>
+              ) : null}
+            </div>
           ))}
           {state.security.filter((item) => item.clientId === client.id).map((item) => (
             <TimelineRow

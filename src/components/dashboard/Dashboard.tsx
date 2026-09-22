@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { startOfMonth } from "date-fns";
 import Link from "next/link";
+import { Calculator } from "lucide-react";
 import { DateFilter } from "@/components/dashboard/DateFilter";
 import { NeedsAttention } from "@/components/dashboard/NeedsAttention";
 import { QuickEntry } from "@/components/dashboard/QuickEntry";
@@ -56,7 +57,19 @@ export function Dashboard() {
   return (
     <div className="space-y-3.5">
       {toast ? <p className="toast-ok">✓ Added</p> : null}
-      <PageHeader title="ANAS LEDGER" subtitle="Fast mobile cash notebook" />
+      <PageHeader
+        title="ANAS LEDGER"
+        subtitle="Fast mobile cash notebook"
+        actions={
+          <Link
+            href="/calculator"
+            aria-label="Calculator"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-secondary"
+          >
+            <Calculator size={20} strokeWidth={1.8} />
+          </Link>
+        }
+      />
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-normal text-secondary">
         <Link href="/settings" className="min-h-11 inline-flex items-center">
           Settings

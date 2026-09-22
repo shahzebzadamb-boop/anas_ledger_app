@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { availableForWithdrawal } from "@/lib/ledger";
@@ -19,7 +20,7 @@ const PLACEHOLDER = "Yahan likho kya hua...";
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5">
-      <p className="text-sm text-muted">{label}</p>
+      {label ? <p className="text-sm text-muted">{label}</p> : <span />}
       <p className="text-right text-sm font-medium">{value}</p>
     </div>
   );
@@ -37,6 +38,7 @@ function ConfirmBody({ parsed }: { parsed: ConfirmableDraft }) {
         <Field label="Received" value={formatPKR(parsed.receivedAmount)} />
         <Field label="Pending" value={formatPKR(parsed.remaining)} />
         <Field label="Method" value={methodLabel(parsed.method)} />
+        {parsed.receivedAmount > 0 ? <Field label="Received By" value={parsed.receivedByName} /> : null}
       </>
     );
   }
@@ -44,10 +46,11 @@ function ConfirmBody({ parsed }: { parsed: ConfirmableDraft }) {
     return (
       <>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment</p>
-        <Field label="Customer" value={parsed.clientName} />
-        {parsed.flat ? <Field label="Flat" value={parsed.flat} /> : null}
-        <Field label="Amount" value={formatPKR(parsed.amount)} />
+        <p className="pt-1 text-sm font-medium">{parsed.clientName}</p>
+        {parsed.flat ? <p className="text-sm text-muted">Flat {parsed.flat}</p> : null}
+        <Field label="Received" value={formatPKR(parsed.amount)} />
         <Field label="Method" value={methodLabel(parsed.method)} />
+        <Field label="Received By" value={parsed.receivedByName} />
       </>
     );
   }
@@ -178,7 +181,12 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
 
   return (
     <Card className="space-y-3">
-      <h2 className="section-title">Quick Entry</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="section-title">Quick Entry</h2>
+        <Link href="/calculator" className="text-sm font-normal text-muted">
+          Calculator
+        </Link>
+      </div>
       <form onSubmit={onSubmit} className="space-y-3">
         <label className="sr-only" htmlFor="quick-entry">
           Yahan likho kya hua...

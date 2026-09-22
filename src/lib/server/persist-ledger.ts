@@ -45,6 +45,15 @@ export async function applyLedgerAction(action: Action): Promise<LedgerState> {
 }
 
 async function persistDiff(connection: PoolConnection, before: LedgerState, after: LedgerState): Promise<void> {
+  const beforeReceivers = ids(before.receivers);
+  for (const receiver of after.receivers) {
+    if (beforeReceivers.has(receiver.id)) continue;
+    await connection.execute(
+      "INSERT INTO receivers (id, createdAt, name, active) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), active = VALUES(active)",
+      [receiver.id, toSqlDate(receiver.createdAt), receiver.name, receiver.active ? 1 : 0],
+    );
+  }
+
   const beforeClients = ids(before.clients);
   for (const client of after.clients) {
     const phone = client.phone ? normalizePhone(client.phone) : null;
@@ -143,8 +152,8 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
     if (beforePayments.has(payment.id)) continue;
     assertPlausibleAmount(payment.amount, "Payment");
     await connection.execute(
-      `INSERT INTO payments (id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, importKey)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payments (id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, importKey, receivedById)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payment.id,
         toSqlDate(payment.createdAt),
@@ -156,6 +165,7 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
         toSqlDate(payment.receivedAt),
         payment.notes,
         null,
+        payment.receivedById,
       ],
     );
   }

@@ -1,6 +1,12 @@
 import { addDays, startOfDay } from "date-fns";
 import { parseAmountToken } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
+import {
+  DEFAULT_RECEIVER_NAME,
+  detectReceiverName,
+  hasReceiverSignal,
+  stripReceiverForNameDetection,
+} from "@/lib/receivers";
 import type { ExpenseCategory, PaymentMethod } from "@/types";
 
 export type TransactionType =
@@ -24,6 +30,7 @@ export type RentDraft = {
   receivedAmount: number;
   remaining: number;
   method: PaymentMethod;
+  receivedByName: string;
   checkIn: Date;
   checkOut: Date;
 };
@@ -35,6 +42,7 @@ export type PaymentDraft = {
   flat: string | null;
   amount: number;
   method: PaymentMethod;
+  receivedByName: string;
 };
 
 export type ExpenseDraft = {
@@ -107,7 +115,7 @@ export type ParseContext = {
 const KNOWN_FLATS = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;
 
 const RECEIVED_RE =
-  /\b(received|receive|recive|recived|wasol|wasool|mila|mil\s+gaya|mil\s+gya|aya|aaya|amount\s+aya|payment\s+aya|paid|full\s+paid|clear|settled|advance)\b/i;
+  /\b(received|receive|recive|recived|wasol|wasool|mila|mil\s+gaya|mil\s+gya|aya|aaya|amount\s+aya|payment\s+aya|paid|full\s+paid|clear|settled|advance|lia|liya)\b/i;
 const PENDING_RE =
   /\b(pending|remaining|remain|baki|baqi|reh\s+gaya|reh\s+gya|reh\s+gai|remaining\s+hai|balance|bacha|bacha\s+hua)\b/i;
 const EXPENSE_RE =
@@ -134,9 +142,9 @@ const STOP_WORDS = new Set(
     "bedsheet", "bedsheets", "linen", "furniture", "water", "watar", "supplies", "staff",
     "commission", "security", "deposit", "amanat", "adjust", "apply", "rent", "total", "booking",
     "extend", "more", "days", "day", "din", "night", "nights", "raat", "nigh", "anas", "withdraw",
-    "withdrawal", "nikal", "nikala", "liya", "flat", "ko", "ka", "ki", "ke", "se", "mein", "mai",
+    "withdrawal", "nikal", "nikala", "liya", "lia", "flat", "ko", "ka", "ki", "ke", "se", "mein", "mai",
     "ne", "aur", "tha", "thi", "hai", "the", "and", "for", "from", "to", "with", "another",
-    "number", "customer", "guest",
+    "number", "customer", "guest", "khizer", "khizar", "khizr", "pas", "by",
   ],
 );
 
@@ -229,32 +237,36 @@ function stripPhones(text: string): string {
     .replace(/\b(?:\+?92|0)?3\d{2}[\s-]+\d{7}\b/g, " ");
 }
 
-function amounts(text: string, flat: string | null): number[] {
-  const dayCount = text.match(DAYS_RE)?.[1] ?? null;
+function amountCandidates(snippet: string): number[] {
   const tokens =
-    stripPhones(text).match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
-  const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
+    snippet.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?(?![A-Za-z0-9])/gi) ?? [];
   return tokens
     .map((token) => parseAmountToken(token.replace(/^rs\.?\s*/i, "")))
-    .filter((value): value is number => {
-      if (value === null || value <= 0) return false;
-      if (dayCount && value === Number(dayCount)) return false;
-      if (flatNumber && value === flatNumber) return false;
-      return true;
-    });
+    .filter((value): value is number => value !== null && value > 0);
+}
+
+function amounts(text: string, flat: string | null): number[] {
+  const dayCount = text.match(DAYS_RE)?.[1] ?? null;
+  const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
+  return amountCandidates(stripPhones(text)).filter((value) => {
+    if (dayCount && value === Number(dayCount)) return false;
+    if (flatNumber && value === flatNumber) return false;
+    return true;
+  });
 }
 
 function amountAfter(text: string, keyword: RegExp): number | null {
   const match = text.match(keyword);
   if (!match || match.index === undefined) return null;
-  const after = stripPhones(text.slice(match.index + match[0].length));
-  const before = stripPhones(text.slice(0, match.index));
-  const afterToken = after.match(/(?:rs\.?\s*)?[\d,]+(?:\.\d+)?(?:k|lac|lakh)?/i);
-  if (afterToken) return parseAmountToken(afterToken[0].replace(/^rs\.?\s*/i, ""));
-  const beforeTokens =
-    before.match(/(?:rs\.?\s*)?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:k|lac|lakh)?/gi) ?? [];
-  const last = beforeTokens.at(-1);
-  return last ? parseAmountToken(last.replace(/^rs\.?\s*/i, "")) : null;
+  const flat = detectFlat(text);
+  const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
+  const dayCount = Number(text.match(DAYS_RE)?.[1] ?? 0) || null;
+  const skip = (value: number) =>
+    Boolean((flatNumber && value === flatNumber) || (dayCount && value === dayCount));
+  const after = amountCandidates(stripPhones(text.slice(match.index + match[0].length))).filter((value) => !skip(value));
+  if (after[0]) return after[0];
+  const before = amountCandidates(stripPhones(text.slice(0, match.index))).filter((value) => !skip(value));
+  return before.at(-1) ?? null;
 }
 
 function expenseMeta(text: string): { label: string; category: ExpenseCategory } {
@@ -294,7 +306,7 @@ function classify(text: string): TransactionType | "AMBIGUOUS" {
     return "EXPENSE";
   }
   if (RENT_RE.test(text) || DAYS_RE.test(text)) return "RENT";
-  if (RECEIVED_RE.test(text)) return "PAYMENT";
+  if (RECEIVED_RE.test(text) || hasReceiverSignal(text)) return "PAYMENT";
   if (PENDING_RE.test(text)) return "RENT";
   if (EXPENSE_RE.test(text)) return "EXPENSE";
   return "AMBIGUOUS";
@@ -326,7 +338,8 @@ export function parseQuickEntry(
   const now = startOfDay(ctx.now ?? new Date());
   const flat = detectFlat(text);
   const phone = detectPhone(text);
-  const clientName = detectName(text, ctx.knownClients ?? []);
+  const receivedByName = detectReceiverName(text);
+  const clientName = detectName(stripReceiverForNameDetection(text), ctx.knownClients ?? []);
   const money = amounts(text, flat);
   const method = detectMethod(text);
   const type = forceType ?? classify(text);
@@ -407,7 +420,7 @@ export function parseQuickEntry(
     if (!clientName || !amount) {
       return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and payment amount.") };
     }
-    return { type: "payment", clientName, phone, flat, amount, method };
+    return { type: "payment", clientName, phone, flat, amount, method, receivedByName };
   }
 
   if (type === "RENT") {
@@ -436,6 +449,7 @@ export function parseQuickEntry(
       receivedAmount: received,
       remaining: Math.max(0, total - received),
       method,
+      receivedByName: received > 0 ? receivedByName : DEFAULT_RECEIVER_NAME,
       checkIn: now,
       checkOut: addDays(now, nights),
     };

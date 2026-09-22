@@ -1,8 +1,10 @@
 import { emptyLedgerState } from "../src/lib/empty-state";
+import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
 import { dashboardTotals } from "../src/lib/ledger";
 import { parseAmountToken } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
+import { detectReceiverName } from "../src/lib/receivers";
 
 const known = [{ name: "Tufail Khan", phone: "923001234567" }];
 const cases: [string, string][] = [
@@ -185,6 +187,116 @@ if (overflowTotals.business !== 40000 || overflowTotals.pending !== 40000) {
   console.error("INT_MAX FILTER FAIL", overflowTotals);
 } else {
   console.log("OK dashboard excludes INT_MAX phone-as-rent");
+}
+
+const caseA = parseQuickEntry("tufail khan 03001234567 802a 2 din total 40k 20k advance cash", {
+  knownClients: known,
+});
+if (
+  caseA.type !== "rent" ||
+  caseA.totalAmount !== 40000 ||
+  caseA.receivedAmount !== 20000 ||
+  caseA.remaining !== 20000 ||
+  caseA.receivedByName !== "Anas"
+) {
+  failed += 1;
+  console.error("CASE A FAIL", caseA);
+} else {
+  console.log("OK case A rent 40k / received 20k / Anas");
+}
+
+const caseB = parseQuickEntry("tufail khan 03001234567 802a 10k wasol by khizer cash", {
+  knownClients: known,
+});
+if (caseB.type !== "payment" || caseB.amount !== 10000 || caseB.receivedByName !== "Khizer") {
+  failed += 1;
+  console.error("CASE B FAIL", caseB);
+} else {
+  console.log("OK case B payment 10k Khizer");
+}
+
+const caseC = parseQuickEntry("tufail se 5k khizer k pas aya 802a", { knownClients: known });
+if (caseC.type !== "payment" || caseC.amount !== 5000 || caseC.receivedByName !== "Khizer") {
+  failed += 1;
+  console.error("CASE C FAIL", caseC);
+} else {
+  console.log("OK case C 5k Khizer");
+}
+
+const caseD = parseQuickEntry("electric bill 18k bank 802a", { knownClients: known });
+if (caseD.type !== "expense" || caseD.amount !== 18000 || "receivedByName" in caseD) {
+  failed += 1;
+  console.error("CASE D FAIL", caseD);
+} else {
+  console.log("OK case D expense 18k no receiver");
+}
+
+const khizerPhrases = [
+  "tufail 20k received by khizer cash 802a",
+  "tufail 20k wasol khizer 802a",
+  "khizer ne tufail se 20k lia 802a",
+  "20k tufail ka khizer ne receive kia",
+  "tufail se 20k khizer k pas aya",
+  "tufail 20k khizer ne lia",
+  "tufail 20k wasol by khizer",
+  "tufail 20k wasol by khizar cash 802a",
+  "tufail 20k wasol by khizr cash 802a",
+];
+for (const text of khizerPhrases) {
+  const parsed = parseQuickEntry(text, { knownClients: known });
+  if (parsed.type !== "payment" || parsed.receivedByName !== "Khizer" || parsed.amount !== 20000) {
+    failed += 1;
+    console.error("KHIZER FAIL", text, parsed);
+  } else {
+    console.log("OK khizer", text);
+  }
+}
+
+const defaultAnas = parseQuickEntry("tufail 20k wasol cash 802a", { knownClients: known });
+if (defaultAnas.type !== "payment" || defaultAnas.receivedByName !== "Anas") {
+  failed += 1;
+  console.error("DEFAULT ANAS FAIL", defaultAnas);
+} else {
+  console.log("OK default receiver Anas");
+}
+
+const newReceiver = parseQuickEntry("tufail 20k received by saad cash 802a", { knownClients: known });
+if (newReceiver.type !== "payment" || newReceiver.receivedByName !== "Saad") {
+  failed += 1;
+  console.error("SAAD RECEIVER FAIL", newReceiver);
+} else {
+  console.log("OK new receiver Saad");
+}
+
+if (detectReceiverName("tufail 20k wasol cash") !== "Anas") {
+  failed += 1;
+  console.error("DETECT DEFAULT FAIL");
+}
+
+let calc = initialCalcState();
+for (const key of ["1", "+", "2", "="]) calc = applyCalcInput(calc, key);
+if (formatCalcDisplay(calc) !== "3") {
+  failed += 1;
+  console.error("CALC ADD FAIL", formatCalcDisplay(calc));
+} else {
+  console.log("OK calculator 1+2=3");
+}
+
+calc = initialCalcState();
+for (const key of ["8", "÷", "0", "="]) calc = applyCalcInput(calc, key);
+if (formatCalcDisplay(calc) !== "Error") {
+  failed += 1;
+  console.error("CALC DIV0 FAIL", formatCalcDisplay(calc));
+} else {
+  console.log("OK calculator divide by zero");
+}
+
+calc = applyCalcInput(calc, "AC");
+if (formatCalcDisplay(calc) !== "0") {
+  failed += 1;
+  console.error("CALC AC FAIL", formatCalcDisplay(calc));
+} else {
+  console.log("OK calculator AC after error");
 }
 
 if (failed) {

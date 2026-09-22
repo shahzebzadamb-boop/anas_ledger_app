@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2";
 import { emptyLedgerState } from "@/lib/empty-state";
 import { normalizeState } from "@/lib/ledger-actions";
 import { asBool, getPool, toIso } from "@/lib/server/db";
+import { prepareLedgerDatabase } from "@/lib/server/prepare-ledger";
 import { repairKnownIntMaxRow } from "@/lib/server/repair-known-intmax";
 import type {
   ExpenseCategory,
@@ -14,8 +15,10 @@ import type {
 export async function loadLedgerState(): Promise<LedgerState> {
   const pool = getPool();
   await repairKnownIntMaxRow(pool);
+  await prepareLedgerDatabase(pool);
   const [
     [flats],
+    [receivers],
     [clients],
     [stays],
     [business],
@@ -31,6 +34,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
     [cycles],
   ] = await Promise.all([
     pool.query<RowDataPacket[]>("SELECT id, name, sortOrder FROM flats ORDER BY sortOrder ASC"),
+    pool.query<RowDataPacket[]>("SELECT id, createdAt, name, active FROM receivers ORDER BY createdAt ASC"),
     pool.query<RowDataPacket[]>(
       "SELECT id, createdAt, name, phone, phoneNormalized, phoneMissing, notes FROM clients ORDER BY name ASC",
     ),
@@ -41,7 +45,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       "SELECT id, stayId, clientId, flatId, amount, occurredAt, note FROM business_entries ORDER BY occurredAt DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes FROM payments ORDER BY receivedAt DESC",
+      "SELECT id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, receivedById FROM payments ORDER BY receivedAt DESC",
     ),
     pool.query<RowDataPacket[]>(
       "SELECT id, createdAt, flatId, amount, category, description, method, spentAt, notes FROM expenses ORDER BY spentAt DESC",
@@ -80,6 +84,14 @@ export async function loadLedgerState(): Promise<LedgerState> {
           sortOrder: Number(row.sortOrder),
         }))
       : empty.flats,
+    receivers: receivers.length
+      ? receivers.map((row) => ({
+          id: String(row.id),
+          createdAt: toIso(row.createdAt),
+          name: String(row.name),
+          active: asBool(row.active),
+        }))
+      : empty.receivers,
     clients: clients.map((row) => ({
       id: String(row.id),
       createdAt: toIso(row.createdAt),
@@ -119,6 +131,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       method: String(row.method) as PaymentMethod,
       receivedAt: toIso(row.receivedAt),
       notes: row.notes ? String(row.notes) : null,
+      receivedById: row.receivedById ? String(row.receivedById) : "recv_anas",
     })),
     expenses: expenses.map((row) => ({
       id: String(row.id),

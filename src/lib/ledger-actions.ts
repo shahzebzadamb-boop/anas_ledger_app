@@ -8,6 +8,7 @@ import { formatPKR } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 import type { ConfirmableDraft } from "@/lib/parse-quick-entry";
 import type { MigrationPatch } from "@/lib/parse-migration-update";
+import { canonicalReceiverName, DEFAULT_RECEIVER_NAME, DEFAULT_RECEIVERS } from "@/lib/receivers";
 import { createId } from "@/lib/utils";
 import type {
   Client,
@@ -17,6 +18,7 @@ import type {
   Payment,
   PaymentMethod,
   PendingDecision,
+  Receiver,
 } from "@/types";
 
 export type RecordPaymentInput = {
@@ -24,6 +26,8 @@ export type RecordPaymentInput = {
   stayId?: string | null;
   amount: number;
   method: PaymentMethod;
+  receivedById?: string | null;
+  receivedByName?: string | null;
 };
 
 export type Action =
@@ -67,6 +71,27 @@ function withActivity(
       ...state.activityLogs,
     ],
   };
+}
+
+function findReceiver(
+  state: LedgerState,
+  input: { receivedById?: string | null; receivedByName?: string | null },
+): { state: LedgerState; receiver: Receiver } {
+  if (input.receivedById) {
+    const existing = state.receivers.find((item) => item.id === input.receivedById);
+    if (existing) return { state, receiver: existing };
+  }
+  const name = canonicalReceiverName(input.receivedByName || DEFAULT_RECEIVER_NAME);
+  const existing = state.receivers.find((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (existing) return { state, receiver: existing };
+  const seeded = DEFAULT_RECEIVERS.find((item) => item.name === name);
+  const receiver: Receiver = {
+    id: seeded?.id ?? createId("recv"),
+    createdAt: nowISO(),
+    name,
+    active: true,
+  };
+  return { state: { ...state, receivers: [...state.receivers, receiver] }, receiver };
 }
 
 function findClient(
@@ -343,11 +368,14 @@ function openStayFor(state: LedgerState, clientId: string, flatName: string | nu
 }
 
 function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerState {
+  const foundReceiver = findReceiver(state, input);
+  let next = foundReceiver.state;
+  const receiver = foundReceiver.receiver;
   let stayId = input.stayId ?? null;
   if (!stayId) {
-    stayId = openStayFor(state, input.clientId, null)?.id ?? null;
+    stayId = openStayFor(next, input.clientId, null)?.id ?? null;
   }
-  const stay = state.stays.find((item) => item.id === stayId);
+  const stay = next.stays.find((item) => item.id === stayId);
   const payment: Payment = {
     id: createId("pay"),
     createdAt: nowISO(),
@@ -358,16 +386,17 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
     method: input.method,
     receivedAt: nowISO(),
     notes: null,
+    receivedById: receiver.id,
   };
-  const client = state.clients.find((item) => item.id === input.clientId);
+  const client = next.clients.find((item) => item.id === input.clientId);
   const cycleDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
   return withActivity(
     {
-      ...state,
-      payments: [payment, ...state.payments],
+      ...next,
+      payments: [payment, ...next.payments],
       reminderSilences: [
         { clientId: input.clientId, cycleDate },
-        ...state.reminderSilences.filter(
+        ...next.reminderSilences.filter(
           (item) => !(item.clientId === input.clientId && item.cycleDate === cycleDate),
         ),
       ],
@@ -381,13 +410,28 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
   );
 }
 
+function withDefaultReceivers(state: LedgerState): LedgerState {
+  const receivers = [...(state.receivers ?? [])];
+  for (const seed of DEFAULT_RECEIVERS) {
+    const exists = receivers.some(
+      (item) => item.id === seed.id || item.name.toLowerCase() === seed.name.toLowerCase(),
+    );
+    if (!exists) receivers.push({ ...seed });
+  }
+  return { ...state, receivers };
+}
+
 function normalizeState(state: LedgerState): LedgerState {
-  return {
+  return withDefaultReceivers({
     ...state,
     stays: state.stays.map((stay) => ({
       ...stay,
       activePending: stay.activePending ?? false,
       notifyEnabled: stay.notifyEnabled ?? false,
+    })),
+    payments: state.payments.map((item) => ({
+      ...item,
+      receivedById: item.receivedById ?? "recv_anas",
     })),
     reviews: state.reviews.map((item) => ({
       ...item,
@@ -400,7 +444,7 @@ function normalizeState(state: LedgerState): LedgerState {
       importedAt: item.importedAt ?? null,
       updatedAt: item.updatedAt ?? null,
     })),
-  };
+  });
 }
 
 function reducer(state: LedgerState, action: Action): LedgerState {
@@ -567,6 +611,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           stayId: stay?.id ?? null,
           amount: parsed.amount,
           method: parsed.method,
+          receivedByName: parsed.receivedByName,
         });
       }
 
@@ -718,6 +763,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
             stayId,
             amount: parsed.receivedAmount,
             method: parsed.method,
+            receivedByName: parsed.receivedByName,
           });
         }
         return next;

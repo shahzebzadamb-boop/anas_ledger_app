@@ -21,6 +21,7 @@ const REQUIRED_TABLES = [
   "users",
   "app_settings",
   "flats",
+  "receivers",
   "clients",
   "stays",
   "business_entries",

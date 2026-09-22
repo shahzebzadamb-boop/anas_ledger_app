@@ -33,6 +33,16 @@ CREATE TABLE flats (
   KEY flats_sortOrder_idx (sortOrder)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE receivers (
+  id VARCHAR(191) NOT NULL,
+  createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  name VARCHAR(191) NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY receivers_name_key (name),
+  KEY receivers_active_idx (active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE clients (
   id VARCHAR(191) NOT NULL,
   createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -100,6 +110,7 @@ CREATE TABLE payments (
   receivedAt DATETIME(3) NOT NULL,
   notes TEXT NULL,
   importKey VARCHAR(191) NULL,
+  receivedById VARCHAR(191) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY payments_importKey_key (importKey),
   KEY payments_clientId_idx (clientId),
@@ -107,9 +118,11 @@ CREATE TABLE payments (
   KEY payments_flatId_idx (flatId),
   KEY payments_receivedAt_idx (receivedAt),
   KEY payments_flat_received_idx (flatId, receivedAt),
+  KEY payments_receivedById_idx (receivedById),
   CONSTRAINT payments_stayId_fkey FOREIGN KEY (stayId) REFERENCES stays(id) ON DELETE SET NULL,
   CONSTRAINT payments_clientId_fkey FOREIGN KEY (clientId) REFERENCES clients(id),
-  CONSTRAINT payments_flatId_fkey FOREIGN KEY (flatId) REFERENCES flats(id)
+  CONSTRAINT payments_flatId_fkey FOREIGN KEY (flatId) REFERENCES flats(id),
+  CONSTRAINT payments_receivedById_fkey FOREIGN KEY (receivedById) REFERENCES receivers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE expenses (

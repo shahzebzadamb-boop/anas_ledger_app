@@ -30,9 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (can opt-in for committing if required)
 .env*
 !.env.example
+
+# local database dumps — never commit customer data
+/backups/
+*.sql.gz
 
 # spreadsheet copies and import dumps — MySQL is the source of truth
 *.xlsx

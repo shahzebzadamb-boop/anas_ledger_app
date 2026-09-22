@@ -19,9 +19,12 @@ export function RecordPaymentModal({
   clientName: string;
   onClose: () => void;
 }) {
-  const { persist } = useLedger();
+  const { persist, state } = useLedger();
   const [amount, setAmount] = useState(String(remaining));
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
+  const [receivedById, setReceivedById] = useState(
+    state.receivers.find((item) => item.name === "Anas")?.id ?? "recv_anas",
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
@@ -54,6 +57,20 @@ export function RecordPaymentModal({
             ))}
           </select>
         </label>
+        <label className="mt-3 block text-sm font-medium">
+          Received By
+          <select
+            className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base"
+            value={receivedById}
+            onChange={(event) => setReceivedById(event.target.value)}
+          >
+            {state.receivers.filter((item) => item.active).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button
@@ -63,7 +80,7 @@ export function RecordPaymentModal({
               if (!value || value <= 0) return;
               void persist({
                 type: "RECORD_PAYMENT",
-                payload: { clientId, stayId, amount: value, method },
+                payload: { clientId, stayId, amount: value, method, receivedById },
               }).then(() => onClose());
             }}
           >

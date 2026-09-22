@@ -6,7 +6,12 @@ import type {
   Stay,
 } from "@/types";
 import { inRange } from "@/lib/dates";
-import { formatPKR, isPlausibleLedgerAmount } from "@/lib/money";
+import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
+
+export function receiverName(state: LedgerState, receiverId: string | null | undefined): string {
+  if (!receiverId) return "Anas";
+  return state.receivers.find((item) => item.id === receiverId)?.name ?? "Anas";
+}
 
 export function flatName(state: LedgerState, flatId: string | null | undefined): string {
   if (!flatId) return "";
@@ -245,6 +250,7 @@ export type RecentActivityItem = {
   at: string;
   title: string;
   detail: string;
+  extra?: string;
   amount: number;
 };
 
@@ -257,13 +263,18 @@ export function recentActivity(state: LedgerState, limit = 8): RecentActivityIte
       detail: `Rent · Flat ${flatName(state, item.flatId)}`,
       amount: item.amount,
     })),
-    ...state.payments.map((item) => ({
-      id: item.id,
-      at: item.receivedAt,
-      title: state.clients.find((client) => client.id === item.clientId)?.name ?? "Payment",
-      detail: "Payment received",
-      amount: item.amount,
-    })),
+    ...state.payments.map((item) => {
+      const flat = item.flatId ? `Flat ${flatName(state, item.flatId)}` : null;
+      const receivedBy = receiverName(state, item.receivedById);
+      return {
+        id: item.id,
+        at: item.receivedAt,
+        title: state.clients.find((client) => client.id === item.clientId)?.name ?? "Payment",
+        detail: `${formatPKR(item.amount)} received · ${methodLabel(item.method)}`,
+        extra: [flat, `Received by ${receivedBy}`].filter(Boolean).join(" · "),
+        amount: item.amount,
+      };
+    }),
     ...state.expenses.map((item) => ({
       id: item.id,
       at: item.spentAt,

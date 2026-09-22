@@ -67,6 +67,13 @@ export type RentEntry = {
   note: string | null;
 };
 
+export type Receiver = {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+};
+
 export type Payment = {
   id: string;
   createdAt: string;
@@ -77,6 +84,7 @@ export type Payment = {
   method: PaymentMethod;
   receivedAt: string;
   notes: string | null;
+  receivedById: string | null;
 };
 
 export type Expense = {
@@ -174,6 +182,7 @@ export type ReminderSilence = {
 
 export type LedgerState = {
   flats: Flat[];
+  receivers: Receiver[];
   clients: Client[];
   stays: Stay[];
   rentEntries: RentEntry[];
