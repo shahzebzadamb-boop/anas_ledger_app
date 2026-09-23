@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { PAYMENT_METHODS } from "@/types";
 import { useLedger } from "@/lib/store";
-import { formatPKR, parseFormAmount } from "@/lib/money";
+import { formatPKR, moneyInputFromSaved, parseFormAmount } from "@/lib/money";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 
 export function RecordPaymentModal({
   clientId,
@@ -20,14 +21,35 @@ export function RecordPaymentModal({
   onClose: () => void;
 }) {
   const { persist, state } = useLedger();
-  const [amount, setAmount] = useState(String(remaining));
+  const lock = useRef(false);
+  const [amount, setAmount] = useState(moneyInputFromSaved(remaining));
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
   const [receivedById, setReceivedById] = useState(
     state.receivers.find((item) => item.name === "Anas")?.id ?? "recv_anas",
   );
   const [overpayOk, setOverpayOk] = useState(false);
+  const [saving, setSaving] = useState(false);
   const value = parseFormAmount(amount, false);
   const extra = value != null && remaining > 0 && value > remaining ? value - remaining : 0;
+
+  async function save() {
+    if (value == null || value <= 0) return;
+    if (extra > 0 && !overpayOk) return;
+    if (lock.current) return;
+    lock.current = true;
+    setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    try {
+      await persist({
+        type: "RECORD_PAYMENT",
+        payload: { clientId, stayId, amount: value, method, receivedById },
+      });
+      onClose();
+    } catch {
+      lock.current = false;
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
@@ -36,20 +58,17 @@ export function RecordPaymentModal({
         <p className="mt-1 text-sm font-normal text-muted">
           {clientName} · remaining {formatPKR(remaining)}
         </p>
-        <label className="mt-4 block text-sm font-medium">
-          Amount
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base"
+        <div className="mt-4">
+          <MoneyInput
+            label="Amount"
             value={amount}
-            onChange={(event) => {
-              setAmount(event.target.value);
+            allowZero={false}
+            onChange={(next) => {
+              setAmount(next);
               setOverpayOk(false);
             }}
           />
-        </label>
+        </div>
         <label className="mt-3 block text-sm font-medium">
           Method
           <select
@@ -88,17 +107,7 @@ export function RecordPaymentModal({
         ) : null}
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              if (value == null) return;
-              if (extra > 0 && !overpayOk) return;
-              void persist({
-                type: "RECORD_PAYMENT",
-                payload: { clientId, stayId, amount: value, method, receivedById },
-              }).then(() => onClose());
-            }}
-          >
+          <Button variant="primary" disabled={saving} onClick={() => void save()}>
             Confirm
           </Button>
         </div>

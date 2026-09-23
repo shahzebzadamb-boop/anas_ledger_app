@@ -1,27 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { formatDate } from "@/lib/dates";
 import { flatName } from "@/lib/ledger";
-import { formatPKR, methodLabel } from "@/lib/money";
+import { formatPKR, methodLabel, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from "@/types";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function ExpensesPage() {
   const { state, persist } = useLedger();
+  const lock = useRef(false);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].value);
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
   const [flat, setFlat] = useState(state.flats[0]?.name ?? "");
   const [editId, setEditId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const expenses = [...state.expenses].filter((item) => !item.voided).sort((a, b) => (a.spentAt < b.spentAt ? 1 : -1));
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const parsedAmount = parseFormAmount(amount, false);
+
+  async function save() {
+    if (!parsedAmount || !description.trim() || lock.current) return;
+    lock.current = true;
+    setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    try {
+      await persist({
+        type: "ADD_EXPENSE",
+        payload: { amount: parsedAmount, description: description.trim(), category, method, flat },
+      });
+      setAmount("");
+      setDescription("");
+    } finally {
+      lock.current = false;
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -37,13 +59,12 @@ export default function ExpensesPage() {
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />
-        <input
-          type="number"
-          min={1}
-          placeholder="Amount"
-          className="w-full rounded-xl border border-border bg-input px-3 text-base"
+        <MoneyInput
+          label="Amount"
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
+          placeholder="5000"
+          allowZero={false}
+          onChange={setAmount}
         />
         <select className="w-full rounded-xl border border-border bg-input px-3 text-base" value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
           {EXPENSE_CATEGORIES.map((item) => (
@@ -60,21 +81,7 @@ export default function ExpensesPage() {
             <option key={item.id} value={item.name}>{item.name}</option>
           ))}
         </select>
-        <Button
-          variant="primary"
-          className="w-full"
-          onClick={() => {
-            const value = Number(amount);
-            if (!value || !description.trim()) return;
-            void persist({
-              type: "ADD_EXPENSE",
-              payload: { amount: value, description: description.trim(), category, method, flat },
-            }).then(() => {
-              setAmount("");
-              setDescription("");
-            });
-          }}
-        >
+        <Button variant="primary" className="w-full" disabled={saving} onClick={() => void save()}>
           Save expense
         </Button>
       </Card>

@@ -28,13 +28,50 @@ export function isValidMoneyAmount(amount: number, allowZero = false): boolean {
   return !isPhoneLikeAmount(amount);
 }
 
+/**
+ * Sanitize typed/pasted money text for a controlled input.
+ * Never use this on phone fields — 03001234567 must stay 03001234567.
+ *
+ * Returns:
+ *   ""     empty field (numeric meaning 0 when allowZero)
+ *   "0"    explicit zero
+ *   "18000" normalized digits with no leading zeros
+ *   null   invalid (ignore; keep previous value)
+ */
+export function sanitizeMoneyInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return "";
+
+  const cleaned = trimmed
+    .replace(/^rs\.?\s*/i, "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "");
+
+  if (cleaned === "") return "";
+  if (!/^\d+$/.test(cleaned)) return null;
+  if (cleaned.length > 12) return null;
+
+  if (/^0+$/.test(cleaned)) return "0";
+  const digits = cleaned.replace(/^0+/, "");
+  const value = Number(digits);
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_LEDGER_AMOUNT) return null;
+  if (isPhoneLikeAmount(value)) return null;
+  return digits;
+}
+
 /** Parse a dedicated money input. Never use this on phone fields. */
 export function parseFormAmount(raw: string, allowZero = false): number | null {
-  const cleaned = raw.replace(/,/g, "").replace(/^rs\.?\s*/i, "").trim();
-  if (cleaned === "") return allowZero ? 0 : null;
-  if (!/^\d+$/.test(cleaned)) return null;
-  const value = Number(cleaned);
+  const sanitized = sanitizeMoneyInput(raw);
+  if (sanitized == null) return null;
+  if (sanitized === "") return allowZero ? 0 : null;
+  const value = Number(sanitized);
   return isValidMoneyAmount(value, allowZero) ? value : null;
+}
+
+/** Display string for an existing saved amount. Zero-as-empty for "nothing entered". */
+export function moneyInputFromSaved(amount: number | null | undefined): string {
+  if (amount == null || amount === 0) return "";
+  return String(amount);
 }
 
 export function parseAmountToken(token: string): number | null {

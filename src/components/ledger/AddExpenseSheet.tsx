@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, karachiDateInput } from "@/lib/dates";
-import { formatPKR, parseFormAmount } from "@/lib/money";
+import { parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type ExpenseCategory, type PaymentMethod } from "@/types";
 
@@ -18,6 +19,7 @@ export function AddExpenseSheet({
   onAdded?: () => void;
 }) {
   const { persist, state } = useLedger();
+  const lock = useRef(false);
   const [flat, setFlat] = useState(
     defaultFlat && defaultFlat !== "all" ? defaultFlat : (state.flats[0]?.name ?? ""),
   );
@@ -41,8 +43,10 @@ export function AddExpenseSheet({
       setError("Enter a valid amount.");
       return;
     }
-    if (saving) return;
+    if (lock.current || amount <= 0) return;
+    lock.current = true;
     setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
     try {
       await persist({
         type: "ADD_EXPENSE",
@@ -60,7 +64,7 @@ export function AddExpenseSheet({
       onClose();
     } catch {
       setError("Save failed.");
-    } finally {
+      lock.current = false;
       setSaving(false);
     }
   }
@@ -103,18 +107,13 @@ export function AddExpenseSheet({
             placeholder="Sofa cleaning"
           />
         </Field>
-        <Field label="Amount *">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className={fieldClass}
-            value={amountRaw}
-            onChange={(event) => setAmountRaw(event.target.value)}
-            placeholder="5000"
-          />
-          {amount != null ? <p className="mt-1 money text-sm text-muted">{formatPKR(amount)}</p> : null}
-        </Field>
+        <MoneyInput
+          label="Amount *"
+          value={amountRaw}
+          placeholder="5000"
+          allowZero={false}
+          onChange={setAmountRaw}
+        />
         <Field label="Payment method">
           <select className={fieldClass} value={method} onChange={(event) => setMethod(event.target.value as PaymentMethod)}>
             {PAYMENT_METHODS.map((item) => (

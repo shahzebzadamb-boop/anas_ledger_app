@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, formatDateShort, karachiDateInput, nightsBetween } from "@/lib/dates";
 import { formatPKR, parseFormAmount } from "@/lib/money";
@@ -20,6 +21,7 @@ export function AddStaySheet({
 }) {
   const { persist, state } = useLedger();
   const today = karachiDateInput();
+  const lock = useRef(false);
   const [flat, setFlat] = useState(
     defaultFlat && defaultFlat !== "all" ? defaultFlat : (state.flats[0]?.name ?? FLAT_NAMES[0]),
   );
@@ -28,7 +30,7 @@ export function AddStaySheet({
   const [checkIn, setCheckIn] = useState(today);
   const [checkOut, setCheckOut] = useState("");
   const [businessRaw, setBusinessRaw] = useState("");
-  const [receivedRaw, setReceivedRaw] = useState("0");
+  const [receivedRaw, setReceivedRaw] = useState("");
   const [securityRaw, setSecurityRaw] = useState("");
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("CASH");
@@ -47,7 +49,7 @@ export function AddStaySheet({
   }, [checkIn, checkOut]);
   const business = parseFormAmount(businessRaw, false);
   const received = parseFormAmount(receivedRaw, true) ?? 0;
-  const security = securityRaw.trim() === "" ? 0 : parseFormAmount(securityRaw, true);
+  const security = parseFormAmount(securityRaw, true) ?? 0;
   const pending = business == null ? 0 : Math.max(0, business - received);
   const overpay = business != null && received > business ? received - business : 0;
   const activeReceivers = state.receivers.filter((item) => item.active);
@@ -61,7 +63,7 @@ export function AddStaySheet({
     if (nights < 1) return "Checkout must be after check-in.";
     if (business == null) return "Enter a valid total rent.";
     if (parseFormAmount(receivedRaw, true) == null) return "Enter a valid amount received.";
-    if (security == null) return "Enter a valid security amount, or leave it blank.";
+    if (parseFormAmount(securityRaw, true) == null) return "Enter a valid security amount, or leave it blank.";
     if (received > 0 && addingReceiver && !newReceiver.trim()) return "Enter the receiver name.";
     if (overpay > 0 && !overpayOk) {
       return `This is ${formatPKR(overpay)} more than the business amount.`;
@@ -80,8 +82,10 @@ export function AddStaySheet({
       setError(null);
       return;
     }
-    if (saving || business == null) return;
+    if (lock.current || business == null) return;
+    lock.current = true;
     setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
     try {
       await persist({
         type: "ADD_STAY",
@@ -105,7 +109,7 @@ export function AddStaySheet({
       onClose();
     } catch {
       setError("Save failed.");
-    } finally {
+      lock.current = false;
       setSaving(false);
     }
   }
@@ -199,38 +203,26 @@ export function AddStaySheet({
           <p className={nights < 1 ? "text-sm font-medium text-warning" : "text-sm font-medium"}>
             {nights < 1 ? "Checkout must be after check-in." : `${nights} Night${nights === 1 ? "" : "s"}`}
           </p>
-          <Field label="Total rent / Business *">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldClass}
-              value={businessRaw}
-              onChange={(event) => {
-                setBusinessRaw(event.target.value);
-                setOverpayOk(false);
-              }}
-              placeholder="60000"
-            />
-            {business != null ? <p className="mt-1 money text-sm text-muted">{formatPKR(business)}</p> : null}
-          </Field>
-          <Field label="Amount received">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldClass}
-              value={receivedRaw}
-              onChange={(event) => {
-                setReceivedRaw(event.target.value);
-                setOverpayOk(false);
-              }}
-              placeholder="0"
-            />
-            {parseFormAmount(receivedRaw, true) != null ? (
-              <p className="mt-1 money text-sm text-muted">{formatPKR(received)}</p>
-            ) : null}
-          </Field>
+          <MoneyInput
+            label="Total rent / Business *"
+            value={businessRaw}
+            placeholder="15000"
+            allowZero={false}
+            onChange={(next) => {
+              setBusinessRaw(next);
+              setOverpayOk(false);
+            }}
+          />
+          <MoneyInput
+            label="Amount received"
+            value={receivedRaw}
+            allowZero
+            helper="always"
+            onChange={(next) => {
+              setReceivedRaw(next);
+              setOverpayOk(false);
+            }}
+          />
           <div>
             <p className="text-sm font-medium">Pending</p>
             <p className={`money mt-1 text-lg ${pending > 0 ? "text-warning" : "text-foreground"}`}>
@@ -280,17 +272,13 @@ export function AddStaySheet({
               ) : null}
             </>
           ) : null}
-          <Field label="Security deposit">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldClass}
-              value={securityRaw}
-              onChange={(event) => setSecurityRaw(event.target.value)}
-              placeholder="Optional"
-            />
-          </Field>
+          <MoneyInput
+            label="Security deposit"
+            value={securityRaw}
+            placeholder="Optional"
+            allowZero
+            onChange={setSecurityRaw}
+          />
           <Field label="Notes">
             <input
               type="text"
@@ -316,7 +304,7 @@ export function AddStaySheet({
               <MoneyLine label="Business" value={business ?? 0} />
               <MoneyLine label="Received" value={received} accent="text-primary" />
               <MoneyLine label="Pending" value={pending} accent={pending > 0 ? "text-warning" : undefined} />
-              <MoneyLine label="Security" value={security ?? 0} />
+              <MoneyLine label="Security" value={security} />
             </div>
           </div>
           <Button variant="primary" className="w-full" disabled={saving} onClick={() => void save()}>

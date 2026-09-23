@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { formatPKR } from "@/lib/money";
+import { MoneyInput } from "@/components/ui/MoneyInput";
+import { formatPKR, moneyInputFromSaved, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type Expense, type Payment, type SecurityTransaction, type Stay } from "@/types";
 import { stayCollectible } from "@/lib/ledger";
@@ -28,6 +29,7 @@ export function EntryEditor({
   onClose: () => void;
 }) {
   const { state, persist } = useLedger();
+  const lock = useRef(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [toast, setToast] = useState(false);
@@ -39,8 +41,10 @@ export function EntryEditor({
   const security = state.security.find((item) => item.id === id);
 
   async function save(action: Parameters<typeof persist>[0]) {
-    if (saving) return;
+    if (lock.current) return;
+    lock.current = true;
     setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
     try {
       await persist(action);
       setToast(true);
@@ -48,7 +52,8 @@ export function EntryEditor({
         setToast(false);
         onClose();
       }, 1400);
-    } finally {
+    } catch {
+      lock.current = false;
       setSaving(false);
       setConfirmSave(false);
     }
@@ -124,7 +129,7 @@ function StayFields({
   const [flat, setFlat] = useState(state.flats.find((item) => item.id === stay.flatId)?.name ?? "");
   const [checkIn, setCheckIn] = useState(stay.checkIn.slice(0, 10));
   const [nights, setNights] = useState(String(stay.nights));
-  const [business, setBusiness] = useState(String(stayCollectible(stay.id, state)));
+  const [business, setBusiness] = useState(moneyInputFromSaved(stayCollectible(stay.id, state)));
   const [notes, setNotes] = useState(state.rentEntries.find((item) => item.stayId === stay.id)?.note ?? "");
 
   return (
@@ -134,7 +139,14 @@ function StayFields({
         <input className={inputClass} value={clientName} onChange={(event) => setClientName(event.target.value)} />
       </Field>
       <Field label="Phone">
-        <input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} />
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          className={inputClass}
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+        />
       </Field>
       <Field label="Flat">
         <select className={inputClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
@@ -149,11 +161,16 @@ function StayFields({
         <input type="date" className={inputClass} value={checkIn} onChange={(event) => setCheckIn(event.target.value)} />
       </Field>
       <Field label="Nights">
-        <input type="number" min={1} className={inputClass} value={nights} onChange={(event) => setNights(event.target.value)} />
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          className={inputClass}
+          value={nights}
+          onChange={(event) => setNights(event.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}
+        />
       </Field>
-      <Field label="Business">
-        <input type="number" min={0} className={inputClass} value={business} onChange={(event) => setBusiness(event.target.value)} />
-      </Field>
+      <MoneyInput label="Business" value={business} allowZero={false} onChange={setBusiness} />
       <Field label="Notes">
         <textarea className={inputClass} rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} />
       </Field>
@@ -169,7 +186,7 @@ function StayFields({
                 flat,
                 checkIn: new Date(`${checkIn}T00:00:00`).toISOString(),
                 nights: Number(nights) || stay.nights,
-                business: Number(business),
+                business: parseFormAmount(business, false) ?? stayCollectible(stay.id, state),
                 notes: notes.trim() || null,
               },
             })
@@ -197,7 +214,7 @@ function PaymentFields({
   onSave: (action: Parameters<ReturnType<typeof useLedger>["persist"]>[0]) => Promise<void>;
 }) {
   const { state } = useLedger();
-  const [amount, setAmount] = useState(String(payment.amount));
+  const [amount, setAmount] = useState(moneyInputFromSaved(payment.amount));
   const [method, setMethod] = useState(payment.method);
   const [receivedById, setReceivedById] = useState(payment.receivedById ?? "recv_anas");
   const [receivedAt, setReceivedAt] = useState(payment.receivedAt.slice(0, 10));
@@ -208,9 +225,7 @@ function PaymentFields({
     <div className="space-y-3">
       <p className="section-title">Edit payment</p>
       <p className="text-sm text-muted">{formatPKR(payment.amount)}</p>
-      <Field label="Amount">
-        <input type="number" min={1} className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} />
-      </Field>
+      <MoneyInput label="Amount" value={amount} allowZero={false} onChange={setAmount} />
       <Field label="Payment method">
         <select className={inputClass} value={method} onChange={(event) => setMethod(event.target.value as typeof method)}>
           {PAYMENT_METHODS.map((item) => (
@@ -248,7 +263,7 @@ function PaymentFields({
               type: "UPDATE_PAYMENT",
               payload: {
                 paymentId: payment.id,
-                amount: Number(amount),
+                amount: parseFormAmount(amount, false) ?? payment.amount,
                 method,
                 receivedById,
                 receivedAt: new Date(`${receivedAt}T12:00:00`).toISOString(),
@@ -279,7 +294,7 @@ function ExpenseFields({
   onSave: (action: Parameters<ReturnType<typeof useLedger>["persist"]>[0]) => Promise<void>;
 }) {
   const { state } = useLedger();
-  const [amount, setAmount] = useState(String(expense.amount));
+  const [amount, setAmount] = useState(moneyInputFromSaved(expense.amount));
   const [category, setCategory] = useState(expense.category);
   const [flat, setFlat] = useState(state.flats.find((item) => item.id === expense.flatId)?.name ?? "");
   const [method, setMethod] = useState(expense.method);
@@ -289,9 +304,7 @@ function ExpenseFields({
   return (
     <div className="space-y-3">
       <p className="section-title">Edit expense</p>
-      <Field label="Amount">
-        <input type="number" min={1} className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} />
-      </Field>
+      <MoneyInput label="Amount" value={amount} allowZero={false} onChange={setAmount} />
       <Field label="Category">
         <select className={inputClass} value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
           {EXPENSE_CATEGORIES.map((item) => (
@@ -332,7 +345,7 @@ function ExpenseFields({
               type: "UPDATE_EXPENSE",
               payload: {
                 expenseId: expense.id,
-                amount: Number(amount),
+                amount: parseFormAmount(amount, false) ?? expense.amount,
                 category,
                 flat: flat || null,
                 method,
@@ -364,7 +377,7 @@ function SecurityFields({
   onSave: (action: Parameters<ReturnType<typeof useLedger>["persist"]>[0]) => Promise<void>;
 }) {
   const { state } = useLedger();
-  const [amount, setAmount] = useState(String(row.amount));
+  const [amount, setAmount] = useState(moneyInputFromSaved(row.amount));
   const [flat, setFlat] = useState(state.flats.find((item) => item.id === row.flatId)?.name ?? "");
   const [clientId, setClientId] = useState(row.clientId);
   const [kind, setKind] = useState(row.kind);
@@ -372,9 +385,7 @@ function SecurityFields({
   return (
     <div className="space-y-3">
       <p className="section-title">Edit security</p>
-      <Field label="Amount">
-        <input type="number" min={1} className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} />
-      </Field>
+      <MoneyInput label="Amount" value={amount} allowZero={false} onChange={setAmount} />
       <Field label="Flat">
         <select className={inputClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
           {state.flats.map((item) => (
@@ -404,7 +415,7 @@ function SecurityFields({
           onYes={() =>
             void onSave({
               type: "UPDATE_SECURITY",
-              payload: { securityId: row.id, amount: Number(amount), flat: flat || null, clientId, kind },
+              payload: { securityId: row.id, amount: parseFormAmount(amount, false) ?? row.amount, flat: flat || null, clientId, kind },
             })
           }
           onNo={() => setConfirmSave(false)}

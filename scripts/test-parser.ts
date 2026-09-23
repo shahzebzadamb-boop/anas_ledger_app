@@ -11,7 +11,7 @@ import {
   uniquePaymentStayId,
 } from "../src/lib/ledger";
 import { reducer } from "../src/lib/ledger-actions";
-import { parseAmountToken, parseFormAmount } from "../src/lib/money";
+import { parseAmountToken, parseFormAmount, sanitizeMoneyInput, moneyInputFromSaved } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 import { looksLikeCorrection } from "../src/lib/parse-correction";
@@ -481,6 +481,78 @@ if (parseFormAmount("03001234567") !== null || parseFormAmount("abc") !== null |
   console.error("FORM AMOUNT FAIL");
 } else {
   console.log("OK form amount rejects phone and accepts 20000");
+}
+
+function typeMoney(start: string, keys: string): string {
+  let value = start;
+  for (const ch of keys) {
+    const next = sanitizeMoneyInput(value + ch);
+    if (next != null) value = next;
+  }
+  return value;
+}
+
+const typed18000 = typeMoney("", "18000");
+const typedFromZero = typeMoney("0", "18000");
+const pastedComma = sanitizeMoneyInput("18,000");
+const pastedRs = sanitizeMoneyInput("Rs 18,000");
+const pastedSpace = sanitizeMoneyInput(" 18000");
+const garbage = sanitizeMoneyInput("18kabc");
+const exponent = sanitizeMoneyInput("1e5");
+const negative = sanitizeMoneyInput("-5000");
+const emptyStay = sanitizeMoneyInput("");
+const onlyZero = sanitizeMoneyInput("0");
+const leading = sanitizeMoneyInput("00018000");
+const phoneMoney = sanitizeMoneyInput("03001234567");
+
+if (typed18000 !== "18000") {
+  failed += 1;
+  console.error("TYPE 18000 FAIL", typed18000);
+} else if (typedFromZero !== "18000") {
+  failed += 1;
+  console.error("TYPE FROM 0 FAIL", typedFromZero);
+} else if (pastedComma !== "18000" || pastedRs !== "18000" || pastedSpace !== "18000") {
+  failed += 1;
+  console.error("PASTE FAIL", pastedComma, pastedRs, pastedSpace);
+} else if (garbage != null || exponent != null || negative != null) {
+  failed += 1;
+  console.error("GARBAGE FAIL", garbage, exponent, negative);
+} else if (emptyStay !== "" || parseFormAmount("", true) !== 0 || onlyZero !== "0") {
+  failed += 1;
+  console.error("EMPTY/ZERO FAIL", emptyStay, onlyZero);
+} else if (leading !== "18000" || parseFormAmount("018000") !== 18000) {
+  failed += 1;
+  console.error("LEADING ZERO FAIL", leading, parseFormAmount("018000"));
+} else if (phoneMoney != null || moneyInputFromSaved(0) !== "") {
+  failed += 1;
+  console.error("PHONE AS MONEY OR ZERO DISPLAY FAIL", phoneMoney);
+} else {
+  console.log("OK money input sanitize 18000 / paste / empty / leading zeros");
+}
+
+const biz = parseFormAmount("15000");
+const recBlank = parseFormAmount("", true) ?? 0;
+const recFive = parseFormAmount("5000");
+if (biz !== 15000 || recBlank !== 0 || biz - recBlank !== 15000 || recFive !== 5000 || biz - recFive !== 10000) {
+  failed += 1;
+  console.error("PENDING CALC FAIL", biz, recBlank, recFive);
+} else {
+  console.log("OK pending 15000 blank received / 5000 received");
+}
+
+if (sanitizeMoneyInput("05000") !== "5000" || parseFormAmount("05000") !== 5000) {
+  failed += 1;
+  console.error("EXPENSE 05000 FAIL");
+} else {
+  console.log("OK expense amount 05000 normalizes to 5000");
+}
+
+const phoneTyped = "03001234567";
+if (phoneTyped !== "03001234567" || phoneMoney != null) {
+  failed += 1;
+  console.error("PHONE PRESERVE FAIL");
+} else {
+  console.log("OK phone 03001234567 not stripped by money sanitizer");
 }
 
 if (nightsBetween("2026-09-22", "2026-09-25") !== 3 || nightsBetween("2026-09-22", "2026-09-22") !== 0) {

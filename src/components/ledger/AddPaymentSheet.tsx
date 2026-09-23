@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, formatStayDates, karachiDateInput } from "@/lib/dates";
 import { paymentStayChoices, stayRemaining, uniquePaymentStayId } from "@/lib/ledger";
@@ -25,6 +26,7 @@ export function AddPaymentSheet({
   const clients = state.clients.filter((client) =>
     state.stays.some((stay) => stay.clientId === client.id && !stay.voided),
   );
+  const lock = useRef(false);
   const [selectedClientId, setSelectedClientId] = useState(clientId ?? lockedStay?.clientId ?? clients[0]?.id ?? "");
   const [selectedStayId, setSelectedStayId] = useState(stayId ?? "");
   const [amountRaw, setAmountRaw] = useState("");
@@ -73,8 +75,10 @@ export function AddPaymentSheet({
       setError(`This is ${formatPKR(extra)} more than the current pending amount.`);
       return;
     }
-    if (saving) return;
+    if (lock.current || amount <= 0) return;
+    lock.current = true;
     setSaving(true);
+    (document.activeElement as HTMLElement | null)?.blur?.();
     try {
       await persist({
         type: "RECORD_PAYMENT",
@@ -93,7 +97,7 @@ export function AddPaymentSheet({
       onClose();
     } catch {
       setError("Save failed.");
-    } finally {
+      lock.current = false;
       setSaving(false);
     }
   }
@@ -149,21 +153,16 @@ export function AddPaymentSheet({
               {state.flats.find((item) => item.id === stay.flatId)?.name ?? "Flat"} · pending {formatPKR(remaining)}
             </p>
           ) : null}
-          <Field label="Amount *">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className={fieldClass}
-              value={amountRaw}
-              onChange={(event) => {
-                setAmountRaw(event.target.value);
-                setOverpayOk(false);
-              }}
-              placeholder="10000"
-            />
-            {amount != null ? <p className="mt-1 money text-sm text-muted">{formatPKR(amount)}</p> : null}
-          </Field>
+          <MoneyInput
+            label="Amount *"
+            value={amountRaw}
+            placeholder="10000"
+            allowZero={false}
+            onChange={(next) => {
+              setAmountRaw(next);
+              setOverpayOk(false);
+            }}
+          />
           <Field label="Payment method">
             <select className={fieldClass} value={method} onChange={(event) => setMethod(event.target.value as PaymentMethod)}>
               {PAYMENT_METHODS.map((item) => (
