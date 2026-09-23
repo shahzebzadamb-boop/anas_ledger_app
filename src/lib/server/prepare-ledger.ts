@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import { ensureMonthlyReportsSchema } from "@/lib/server/monthly-reports";
 
 export const CLEAN_START_KEY = "clean_start_20260923";
 
@@ -182,6 +183,7 @@ export async function ensureCorrectionsSchema(pool: Pool): Promise<void> {
 export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResult> {
   await ensureReceiversSchema(pool);
   await ensureCorrectionsSchema(pool);
+  await ensureMonthlyReportsSchema(pool);
   const result = await runCleanStartIfNeeded(pool);
   if (result.ran) {
     console.info("ANAS_CLEAN_START", JSON.stringify(result));

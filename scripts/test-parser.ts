@@ -1,6 +1,6 @@
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
-import { nightsBetween } from "../src/lib/dates";
+import { karachiMonthRange, nightsBetween } from "../src/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
@@ -14,6 +14,13 @@ import {
 import { reducer } from "../src/lib/ledger-actions";
 import { parseAmountToken, parseFormAmount, sanitizeMoneyInput, moneyInputFromSaved } from "../src/lib/money";
 import { pendingNotice } from "../src/lib/notifications";
+import {
+  buildMonthCsv,
+  buildMonthReport,
+  completedMonthsThrough,
+  listReportMonths,
+  toMonthlyReportRecord,
+} from "../src/lib/month-accounting";
 import {
   buildAnasPendingNotification,
   buildClientWhatsAppReminder,
@@ -843,6 +850,141 @@ if (unchanged.stays.length !== manual.stays.length) {
   console.error("BAD DATES STAY CREATED");
 } else {
   console.log("OK checkout before check-in rejected");
+}
+
+const oct1 = new Date("2026-10-01T00:00:00+05:00");
+let roll = emptyLedgerState();
+roll = reducer(roll, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "802-A",
+    clientName: "Tufail Khan",
+    phone: "03001234567",
+    checkIn: "2026-09-10T00:00:00.000Z",
+    checkOut: "2026-09-13T00:00:00.000Z",
+    nights: 3,
+    business: 500000,
+    received: 450000,
+    method: "CASH",
+    receivedByName: "Anas",
+  },
+});
+roll = reducer(roll, {
+  type: "ADD_EXPENSE",
+  payload: {
+    amount: 80000,
+    category: "ELECTRICITY",
+    description: "K-Electric",
+    method: "BANK_TRANSFER",
+    flat: "802-A",
+    spentAt: "2026-09-20T00:00:00.000Z",
+  },
+});
+const septRange = karachiMonthRange(2026, 9);
+const octRange = karachiMonthRange(2026, 10);
+const septHome = dashboardTotals(roll, septRange, "all");
+const octHome = dashboardTotals(roll, octRange, "all");
+const septReport = buildMonthReport(roll, 2026, 9, oct1);
+const monthsAtOct = listReportMonths(roll, oct1);
+const completed = completedMonthsThrough(oct1, { year: 2026, month: 9 });
+if (
+  septHome.business !== 500000 ||
+  septHome.received !== 450000 ||
+  septHome.expenses !== 80000 ||
+  septHome.pending !== 50000
+) {
+  failed += 1;
+  console.error("SEPT HOME FAIL", septHome);
+} else if (
+  octHome.business !== 0 ||
+  octHome.received !== 0 ||
+  octHome.expenses !== 0 ||
+  octHome.pending !== 50000 ||
+  octHome.carriedForward !== 50000
+) {
+  failed += 1;
+  console.error("OCT 1 HOME FAIL", octHome);
+} else if (septReport.closingOutstanding !== 50000 || septReport.business !== 500000 || septReport.received !== 450000) {
+  failed += 1;
+  console.error("SEPT REPORT FAIL", septReport);
+} else if (!monthsAtOct.some((item) => item.year === 2026 && item.month === 9 && !item.live) || completed.length !== 1) {
+  failed += 1;
+  console.error("SEPT REPORT LIST FAIL", monthsAtOct, completed);
+} else {
+  console.log("OK October 1 rollover: pending 50k carried forward, Sept report exists once");
+}
+
+const firstSnap = toMonthlyReportRecord(septReport, null, oct1);
+const secondSnap = toMonthlyReportRecord(septReport, firstSnap, oct1);
+if (firstSnap.year !== 2026 || firstSnap.month !== 9 || secondSnap.version !== 1 || secondSnap.status !== "FINAL") {
+  failed += 1;
+  console.error("IDEMPOTENT SNAP FAIL", firstSnap, secondSnap);
+} else {
+  console.log("OK monthly report snapshot is idempotent");
+}
+
+roll = reducer(roll, {
+  type: "RECORD_PAYMENT",
+  payload: {
+    clientId: roll.clients[0].id,
+    stayId: roll.stays[0].id,
+    amount: 20000,
+    method: "EASYPAISA",
+    receivedByName: "Khizer",
+    receivedAt: "2026-10-03T10:00:00+05:00",
+  },
+});
+const octAfterPay = dashboardTotals(roll, octRange, "all");
+const septAfterPay = buildMonthReport(roll, 2026, 9, new Date("2026-10-03T10:00:00+05:00"));
+if (
+  octAfterPay.business !== 0 ||
+  octAfterPay.received !== 20000 ||
+  octAfterPay.pending !== 30000 ||
+  octAfterPay.carriedForward !== 30000 ||
+  septAfterPay.business !== 500000 ||
+  septAfterPay.closingOutstanding !== 50000 ||
+  septAfterPay.pendingCollected !== 0
+) {
+  failed += 1;
+  console.error("OCT COLLECT OLD DEBT FAIL", octAfterPay, septAfterPay.closingOutstanding, septAfterPay.pendingCollected);
+} else {
+  console.log("OK October collection of September debt does not change September closing pending");
+}
+
+roll = reducer(roll, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "408-B",
+    clientName: "New Guest",
+    phone: "03111222333",
+    checkIn: "2026-10-05T00:00:00.000Z",
+    checkOut: "2026-10-08T00:00:00.000Z",
+    nights: 3,
+    business: 60000,
+    received: 20000,
+    method: "CASH",
+    receivedByName: "Anas",
+  },
+});
+const octWithStay = dashboardTotals(roll, octRange, "all");
+if (
+  octWithStay.business !== 60000 ||
+  octWithStay.received !== 40000 ||
+  octWithStay.pending !== 70000 ||
+  octWithStay.carriedForward !== 30000
+) {
+  failed += 1;
+  console.error("OCT NEW STAY FAIL", octWithStay);
+} else {
+  console.log("OK October new stay 60k/20k plus 30k carried forward");
+}
+
+const csv = buildMonthCsv(buildMonthReport(roll, 2026, 9, oct1));
+if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
+  failed += 1;
+  console.error("CSV FAIL", csv.slice(0, 400));
+} else {
+  console.log("OK monthly CSV export contains September totals");
 }
 
 if (failed) {

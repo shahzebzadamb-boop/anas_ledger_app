@@ -187,6 +187,32 @@ export type ReminderSilence = {
   cycleDate: string;
 };
 
+export type MonthlyReportStatus = "FINAL" | "UPDATED" | "LIVE";
+
+export type MonthlyReportRecord = {
+  id: string;
+  year: number;
+  month: number;
+  periodStart: string;
+  periodEnd: string;
+  businessTotal: number;
+  receivedTotal: number;
+  expensesTotal: number;
+  endingPendingTotal: number;
+  carriedForwardPending: number;
+  newPendingGenerated: number;
+  pendingCollected: number;
+  closingOutstanding: number;
+  totalStays: number;
+  totalNights: number;
+  totalClients: number;
+  status: MonthlyReportStatus;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  finalizedAt: string | null;
+};
+
 export type LedgerState = {
   flats: Flat[];
   receivers: Receiver[];
@@ -203,6 +229,7 @@ export type LedgerState = {
   auditLogs: AuditLog[];
   reminderSilences: ReminderSilence[];
   nightSummaryDates: string[];
+  monthlyReports: MonthlyReportRecord[];
 };
 
 export type DashboardTotals = {
@@ -210,6 +237,7 @@ export type DashboardTotals = {
   received: number;
   pending: number;
   expenses: number;
+  carriedForward: number;
 };
 
 export type AttentionItem = {

@@ -18,16 +18,23 @@ export function SummaryCards({
   preset,
   from,
   to,
+  periodLabel,
+  showCarryForward,
 }: {
   totals: DashboardTotals;
   flat: string;
   preset: DateFilterPreset;
   from?: string;
   to?: string;
+  periodLabel?: string;
+  showCarryForward?: boolean;
 }) {
   return (
     <section className="space-y-2">
-      <h2 className="section-title">Money summary</h2>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="section-title">Money summary</h2>
+        {periodLabel ? <p className="text-xs font-normal text-muted">{periodLabel}</p> : null}
+      </div>
       <div className="grid grid-cols-2 gap-2.5">
         {cards.map((card) => (
           <Link
@@ -37,6 +44,9 @@ export function SummaryCards({
           >
             <p className="card-label">{card.label}</p>
             <p className={`money mt-1.5 text-lg ${card.amountClass}`}>{formatPKR(totals[card.key])}</p>
+            {card.key === "pending" && showCarryForward && totals.carriedForward > 0 ? (
+              <p className="mt-1 text-[11px] font-normal text-muted">{formatPKR(totals.carriedForward)} carried forward</p>
+            ) : null}
           </Link>
         ))}
       </div>

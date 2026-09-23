@@ -10,7 +10,7 @@ import { QuickEntry } from "@/components/dashboard/QuickEntry";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { rangeForPreset } from "@/lib/dates";
+import { periodLabel, rangeForPreset } from "@/lib/dates";
 import { dashboardTotals, needsAttention, stayLedgerRows } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
@@ -74,6 +74,8 @@ export function Dashboard() {
         preset={preset}
         from={custom.from.toISOString().slice(0, 10)}
         to={custom.to.toISOString().slice(0, 10)}
+        periodLabel={periodLabel(preset, range)}
+        showCarryForward={preset === "month"}
       />
       <DateFilter
         flats={state.flats}

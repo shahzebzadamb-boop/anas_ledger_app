@@ -607,6 +607,7 @@ function normalizeState(state: LedgerState): LedgerState {
     security: (state.security ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     discounts: (state.discounts ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     withdrawals: (state.withdrawals ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
+    monthlyReports: state.monthlyReports ?? [],
     reviews: state.reviews.map((item) => ({
       ...item,
       month: item.month ?? item.sourceSheet,

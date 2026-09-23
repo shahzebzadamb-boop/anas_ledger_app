@@ -1,16 +1,15 @@
 import {
   addDays,
   differenceInCalendarDays,
-  endOfDay,
-  endOfMonth,
   format,
   isBefore,
   isSameDay,
   startOfDay,
-  startOfMonth,
-  subDays,
 } from "date-fns";
 import type { DateFilterPreset, DateRange } from "@/types";
+
+export const KARACHI = "Asia/Karachi";
+const KARACHI_OFFSET = "+05:00";
 
 export function toISO(date: Date): string {
   return date.toISOString();
@@ -20,8 +19,82 @@ export function fromISO(value: string): Date {
   return new Date(value);
 }
 
+export function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function karachiYmd(now = new Date()): { year: number; month: number; day: number } {
+  const text = new Intl.DateTimeFormat("en-CA", {
+    timeZone: KARACHI,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const [year, month, day] = text.split("-").map(Number);
+  return { year, month, day };
+}
+
+export function karachiWallTime(year: number, month: number, day: number, hour = 0, minute = 0, second = 0, ms = 0): Date {
+  return new Date(
+    `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}:${pad2(second)}.${String(ms).padStart(3, "0")}${KARACHI_OFFSET}`,
+  );
+}
+
+export function addCalendarDays(year: number, month: number, day: number, days: number): { year: number; month: number; day: number } {
+  const next = new Date(Date.UTC(year, month - 1, day + days));
+  return { year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, day: next.getUTCDate() };
+}
+
+export function karachiStartOfDay(year: number, month: number, day: number): Date {
+  return karachiWallTime(year, month, day, 0, 0, 0, 0);
+}
+
+export function karachiEndOfDay(year: number, month: number, day: number): Date {
+  const next = addCalendarDays(year, month, day, 1);
+  return new Date(karachiStartOfDay(next.year, next.month, next.day).getTime() - 1);
+}
+
+export function karachiMonthRange(year: number, month: number): DateRange {
+  const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  return {
+    from: karachiStartOfDay(year, month, 1),
+    to: new Date(karachiStartOfDay(next.year, next.month, 1).getTime() - 1),
+  };
+}
+
+export function previousKarachiMonth(year: number, month: number): { year: number; month: number } {
+  if (month === 1) return { year: year - 1, month: 12 };
+  return { year, month: month - 1 };
+}
+
+export function isCompletedKarachiMonth(year: number, month: number, now = new Date()): boolean {
+  const today = karachiYmd(now);
+  return year < today.year || (year === today.year && month < today.month);
+}
+
+export function formatMonthLabel(year: number, month: number): string {
+  return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+    Date.UTC(year, month - 1, 1),
+  );
+}
+
+export function periodLabel(preset: DateFilterPreset, range: DateRange): string {
+  if (preset === "today") return "Today";
+  if (preset === "7days") return "Last 7 days";
+  const from = karachiYmd(range.from);
+  const to = karachiYmd(range.to);
+  if (preset === "month" || (from.year === to.year && from.month === to.month && from.day === 1 && to.day >= 28)) {
+    return formatMonthLabel(from.year, from.month);
+  }
+  if (from.year === to.year && from.month === to.month && from.day === to.day) {
+    return `${from.day} ${formatMonthLabel(from.year, from.month)}`;
+  }
+  return `${from.day} ${format(Date.UTC(from.year, from.month - 1, 1), "MMM")} – ${to.day} ${format(Date.UTC(to.year, to.month - 1, 1), "MMM yyyy")}`;
+}
+
 export function startOfToday(now = new Date()): Date {
-  return startOfDay(now);
+  const { year, month, day } = karachiYmd(now);
+  return karachiStartOfDay(year, month, day);
 }
 
 export function rangeForPreset(
@@ -30,21 +103,31 @@ export function rangeForPreset(
   now = new Date(),
 ): DateRange {
   if (preset === "custom" && custom) {
+    const from = karachiYmd(custom.from);
+    const to = karachiYmd(custom.to);
     return {
-      from: startOfDay(custom.from),
-      to: endOfDay(custom.to),
+      from: karachiStartOfDay(from.year, from.month, from.day),
+      to: karachiEndOfDay(to.year, to.month, to.day),
     };
   }
 
+  const today = karachiYmd(now);
   if (preset === "today") {
-    return { from: startOfDay(now), to: endOfDay(now) };
+    return {
+      from: karachiStartOfDay(today.year, today.month, today.day),
+      to: karachiEndOfDay(today.year, today.month, today.day),
+    };
   }
 
   if (preset === "7days") {
-    return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
+    const from = addCalendarDays(today.year, today.month, today.day, -6);
+    return {
+      from: karachiStartOfDay(from.year, from.month, from.day),
+      to: karachiEndOfDay(today.year, today.month, today.day),
+    };
   }
 
-  return { from: startOfMonth(now), to: endOfMonth(now) };
+  return karachiMonthRange(today.year, today.month);
 }
 
 export function inRange(isoDate: string, range: DateRange): boolean {
@@ -78,7 +161,9 @@ export function karachiDateInput(now = new Date()): string {
 }
 
 export function dateInputToISO(value: string): string {
-  return startOfDay(new Date(`${value}T00:00:00`)).toISOString();
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return karachiStartOfDay(karachiYmd().year, karachiYmd().month, karachiYmd().day).toISOString();
+  return karachiStartOfDay(year, month, day).toISOString();
 }
 
 export function overdueDays(dueDateISO: string, now = new Date()): number {

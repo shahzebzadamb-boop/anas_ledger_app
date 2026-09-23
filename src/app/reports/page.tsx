@@ -5,14 +5,15 @@ import { startOfMonth } from "date-fns";
 import { DateFilter } from "@/components/dashboard/DateFilter";
 import { StayLedgerCard } from "@/components/dashboard/StayLedgerCard";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MonthlyReports } from "@/components/reports/MonthlyReports";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { inRange, rangeForPreset } from "@/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
+  operationalReconciled,
   stayLedgerRows,
-  totalsMatchStayLedger,
 } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
@@ -40,7 +41,7 @@ export default function ReportsPage() {
         .map((item) => ({ name: item.name, ...dashboardTotals(state, range, item.name) })),
     [range, selectedFlat, state],
   );
-  const matched = totalsMatchStayLedger(totals, stays, expenses);
+  const matched = operationalReconciled(state, range, selectedFlat, totals);
   const methods = useMemo(() => {
     const counts = new Map<string, number>();
     for (const payment of state.payments) {
@@ -78,7 +79,8 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle="Summary can be shared. Stay names stay inside the app." />
+      <PageHeader title="Reports" subtitle="Monthly reports stay available. Home stays on the current month." />
+      <MonthlyReports state={state} />
       <DateFilter
         flats={state.flats}
         selectedFlat={selectedFlat}

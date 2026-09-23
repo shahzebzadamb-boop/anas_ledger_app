@@ -15,9 +15,10 @@ import { formatDate, rangeForPreset } from "@/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
+  operationalReconciled,
   paymentLedgerRows,
+  pendingLedgerRows,
   stayLedgerRows,
-  totalsMatchStayLedger,
 } from "@/lib/ledger";
 import { ledgerHref, parseLedgerPreset, parseLedgerView, type LedgerView } from "@/lib/ledger-href";
 import { formatPKR } from "@/lib/money";
@@ -48,17 +49,11 @@ export function LedgerPage() {
 
   const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
   const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
-  const pending = useMemo(() => stays.filter((item) => item.pending > 0), [stays]);
+  const pending = useMemo(() => pendingLedgerRows(state, selectedFlat), [state, selectedFlat]);
   const payments = useMemo(() => paymentLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
   const expenses = useMemo(() => expenseLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
   const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [state, range, selectedFlat]);
-  const matched = totalsMatchStayLedger(totals, stays, expenses);
-  const paymentSum = payments.reduce((sum, item) => sum + item.amount, 0);
-  const pendingSum = pending.reduce((sum, item) => sum + item.pending, 0);
-  const reconciled =
-    matched &&
-    paymentSum === totals.received &&
-    pendingSum === totals.pending;
+  const reconciled = operationalReconciled(state, range, selectedFlat, totals);
 
   function go(next: {
     view?: LedgerView;

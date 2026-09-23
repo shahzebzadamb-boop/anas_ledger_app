@@ -3,6 +3,7 @@ import { emptyLedgerState } from "@/lib/empty-state";
 import { normalizeState } from "@/lib/ledger-actions";
 import { asBool, getPool, toIso } from "@/lib/server/db";
 import { prepareLedgerDatabase } from "@/lib/server/prepare-ledger";
+import { ensureMonthlyReportsSafe } from "@/lib/server/monthly-reports";
 import { repairKnownIntMaxRow } from "@/lib/server/repair-known-intmax";
 import type {
   ExpenseCategory,
@@ -76,7 +77,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
   ]);
 
   const empty = emptyLedgerState();
-  return normalizeState({
+  const state = normalizeState({
     flats: flats.length
       ? flats.map((row) => ({
           id: String(row.id),
@@ -223,5 +224,8 @@ export async function loadLedgerState(): Promise<LedgerState> {
       cycleDate: String(row.cycleDate),
     })),
     nightSummaryDates: cycles.map((row) => String(row.cycleDate)),
+    monthlyReports: [],
   });
+  const monthlyReports = await ensureMonthlyReportsSafe(pool, state);
+  return { ...state, monthlyReports };
 }

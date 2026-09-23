@@ -6,6 +6,7 @@ import type {
   Stay,
 } from "@/types";
 import { inRange } from "@/lib/dates";
+import { operationalTotals } from "@/lib/month-accounting";
 import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 
@@ -85,10 +86,7 @@ function matchesFlat(flatId: string | null | undefined, selected: string): boole
 
 function stayTouchesRange(stay: Stay, state: LedgerState, range: DateRange): boolean {
   if (inRange(stay.checkIn, range) || inRange(stay.checkOut, range)) return true;
-  if (state.rentEntries.some((item) => item.stayId === stay.id && inRange(item.occurredAt, range))) {
-    return true;
-  }
-  return state.payments.some((item) => item.stayId === stay.id && inRange(item.receivedAt, range));
+  return state.rentEntries.some((item) => item.stayId === stay.id && isLive(item) && inRange(item.occurredAt, range));
 }
 
 function matchesClient(
@@ -158,7 +156,7 @@ export function isSpreadsheetSummaryText(text: string | null | undefined): boole
   return SUMMARY_TEXT.test(trimmed);
 }
 
-function isConfirmedExpense(
+export function isConfirmedExpense(
   item: LedgerState["expenses"][number],
   reviews: LedgerState["reviews"],
 ): boolean {
@@ -172,7 +170,7 @@ function isConfirmedExpense(
   return true;
 }
 
-function isRentPayment(item: LedgerState["payments"][number], reviews: LedgerState["reviews"]): boolean {
+export function isRentPayment(item: LedgerState["payments"][number], reviews: LedgerState["reviews"]): boolean {
   if (isSpreadsheetSummaryText(item.notes)) return false;
   const review = reviews.find((row) => row.id === item.id);
   if (!review) return true;
@@ -233,49 +231,49 @@ export type PaymentLedgerRow = {
   notes: string | null;
 };
 
+function toStayLedgerRow(stay: Stay, state: LedgerState): StayLedgerRow {
+  const payments = state.payments
+    .filter((item) => item.stayId === stay.id && isLive(item) && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
+    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+  const pending = stayRemaining(stay.id, state);
+  return {
+    stayId: stay.id,
+    clientId: stay.clientId,
+    clientName: state.clients.find((client) => client.id === stay.clientId)?.name ?? "Customer",
+    phone: state.clients.find((client) => client.id === stay.clientId)?.phone ?? null,
+    flat: flatName(state, stay.flatId),
+    nights: stay.nights,
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    business: stayCollectible(stay.id, state),
+    received: stayPayments(stay.id, state),
+    pending,
+    methods: [...new Set(payments.map((item) => methodLabel(item.method)))],
+    receivedBy: [...new Set(payments.map((item) => receiverName(state, item.receivedById)))],
+    status: pending > 0 ? ("Pending" as const) : ("Settled" as const),
+    payments: payments.map((item) => ({
+      id: item.id,
+      receivedAt: item.receivedAt,
+      amount: item.amount,
+      method: methodLabel(item.method),
+      receivedBy: receiverName(state, item.receivedById),
+    })),
+    security: state.security
+      .filter((item) => item.stayId === stay.id && isLive(item))
+      .map((item) => ({ id: item.id, amount: item.amount, kind: item.kind, at: item.occurredAt })),
+    discounts: state.discounts
+      .filter((item) => item.stayId === stay.id && isLive(item))
+      .map((item) => ({ id: item.id, amount: item.amount, at: item.occurredAt, note: item.note })),
+    extensionNotes: state.rentEntries
+      .filter((item) => item.stayId === stay.id && isLive(item) && item.note)
+      .map((item) => item.note as string),
+  };
+}
+
 export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFlat: string): StayLedgerRow[] {
   return state.stays
     .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && stayTouchesRange(stay, state, range))
-    .map((stay) => {
-      const payments = state.payments
-        .filter((item) => item.stayId === stay.id && isLive(item) && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
-        .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
-      const methods = [...new Set(payments.map((item) => methodLabel(item.method)))];
-      const receivedBy = [...new Set(payments.map((item) => receiverName(state, item.receivedById)))];
-      const pending = stayRemaining(stay.id, state);
-      return {
-        stayId: stay.id,
-        clientId: stay.clientId,
-        clientName: state.clients.find((client) => client.id === stay.clientId)?.name ?? "Customer",
-        phone: state.clients.find((client) => client.id === stay.clientId)?.phone ?? null,
-        flat: flatName(state, stay.flatId),
-        nights: stay.nights,
-        checkIn: stay.checkIn,
-        checkOut: stay.checkOut,
-        business: stayCollectible(stay.id, state),
-        received: stayPayments(stay.id, state),
-        pending,
-        methods,
-        receivedBy,
-        status: pending > 0 ? ("Pending" as const) : ("Settled" as const),
-        payments: payments.map((item) => ({
-          id: item.id,
-          receivedAt: item.receivedAt,
-          amount: item.amount,
-          method: methodLabel(item.method),
-          receivedBy: receiverName(state, item.receivedById),
-        })),
-        security: state.security
-          .filter((item) => item.stayId === stay.id && isLive(item))
-          .map((item) => ({ id: item.id, amount: item.amount, kind: item.kind, at: item.occurredAt })),
-        discounts: state.discounts
-          .filter((item) => item.stayId === stay.id && isLive(item))
-          .map((item) => ({ id: item.id, amount: item.amount, at: item.occurredAt, note: item.note })),
-        extensionNotes: state.rentEntries
-          .filter((item) => item.stayId === stay.id && isLive(item) && item.note)
-          .map((item) => item.note as string),
-      };
-    })
+    .map((stay) => toStayLedgerRow(stay, state))
     .sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1));
 }
 
@@ -311,27 +309,25 @@ export function paymentLedgerRows(
   range: DateRange,
   selectedFlat: string,
 ): PaymentLedgerRow[] {
-  const stays = stayLedgerRows(state, range, selectedFlat);
-  const stayById = new Map(stays.map((item) => [item.stayId, item]));
   return state.payments
     .filter(
       (item) =>
         isLive(item) &&
-        item.stayId != null &&
-        stayById.has(item.stayId) &&
+        matchesFlat(item.flatId, selectedFlat) &&
+        inRange(item.receivedAt, range) &&
         isPlausibleLedgerAmount(item.amount) &&
         isRentPayment(item, state.reviews),
     )
     .sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1))
     .map((item) => {
-      const stay = stayById.get(item.stayId ?? "");
+      const stay = item.stayId ? state.stays.find((row) => row.id === item.stayId) : null;
       return {
         id: item.id,
         stayId: item.stayId,
         clientId: item.clientId,
-        clientName: stay?.clientName ?? state.clients.find((client) => client.id === item.clientId)?.name ?? "Customer",
-        phone: stay?.phone ?? state.clients.find((client) => client.id === item.clientId)?.phone ?? null,
-        flat: stay?.flat ?? (item.flatId ? flatName(state, item.flatId) : "—"),
+        clientName: state.clients.find((client) => client.id === item.clientId)?.name ?? "Customer",
+        phone: state.clients.find((client) => client.id === item.clientId)?.phone ?? null,
+        flat: stay ? flatName(state, stay.flatId) : item.flatId ? flatName(state, item.flatId) : "—",
         amount: item.amount,
         method: methodLabel(item.method),
         receivedBy: receiverName(state, item.receivedById),
@@ -341,19 +337,44 @@ export function paymentLedgerRows(
     });
 }
 
+export function pendingLedgerRows(state: LedgerState, selectedFlat: string): StayLedgerRow[] {
+  return state.stays
+    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
+    .map((stay) => toStayLedgerRow(stay, state))
+    .sort((a, b) => b.pending - a.pending);
+}
+
 export function dashboardTotals(
   state: LedgerState,
   range: DateRange,
   selectedFlat: string,
 ): DashboardTotals {
-  const stays = stayLedgerRows(state, range, selectedFlat);
-  const expenses = expenseLedgerRows(state, range, selectedFlat);
+  const period = operationalTotals(state, range, selectedFlat);
   return {
-    business: stays.reduce((sum, item) => sum + item.business, 0),
-    received: stays.reduce((sum, item) => sum + item.received, 0),
-    pending: stays.reduce((sum, item) => sum + item.pending, 0),
-    expenses: expenses.reduce((sum, item) => sum + item.amount, 0),
+    business: period.business,
+    received: period.received,
+    pending: period.pending,
+    expenses: period.expenses,
+    carriedForward: period.carriedForward,
   };
+}
+
+export function operationalReconciled(
+  state: LedgerState,
+  range: DateRange,
+  selectedFlat: string,
+  totals: DashboardTotals,
+): boolean {
+  const payments = paymentLedgerRows(state, range, selectedFlat);
+  const expenses = expenseLedgerRows(state, range, selectedFlat);
+  const pending = pendingLedgerRows(state, selectedFlat);
+  return (
+    totals.business === operationalTotals(state, range, selectedFlat).business &&
+    totals.received === payments.reduce((sum, item) => sum + item.amount, 0) &&
+    totals.pending === pending.reduce((sum, item) => sum + item.pending, 0) &&
+    totals.expenses === expenses.reduce((sum, item) => sum + item.amount, 0) &&
+    totals.carriedForward === operationalTotals(state, range, selectedFlat).carriedForward
+  );
 }
 
 export function totalsMatchStayLedger(
@@ -361,16 +382,8 @@ export function totalsMatchStayLedger(
   stays: StayLedgerRow[],
   expenses: ExpenseLedgerRow[],
 ): boolean {
-  const business = stays.reduce((sum, item) => sum + item.business, 0);
-  const received = stays.reduce((sum, item) => sum + item.received, 0);
-  const pending = stays.reduce((sum, item) => sum + item.pending, 0);
   const expenseSum = expenses.reduce((sum, item) => sum + item.amount, 0);
-  return (
-    totals.business === business &&
-    totals.received === received &&
-    totals.pending === pending &&
-    totals.expenses === expenseSum
-  );
+  return totals.expenses === expenseSum && totals.carriedForward >= 0;
 }
 
 export function availableForWithdrawal(state: LedgerState): number {

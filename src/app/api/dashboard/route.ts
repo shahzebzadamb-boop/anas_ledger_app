@@ -35,7 +35,7 @@ export async function GET(request: Request) {
         error: unavailable
           ? "Database is not configured. Set it on the server. Saves will not use in-memory data."
           : "Database unavailable.",
-        totals: { business: 0, received: 0, pending: 0, expenses: 0 },
+        totals: { business: 0, received: 0, pending: 0, expenses: 0, carriedForward: 0 },
       },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );

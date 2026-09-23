@@ -87,5 +87,11 @@ function Chip({
 }
 
 function toInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+  return ymd;
 }

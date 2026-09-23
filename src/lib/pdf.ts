@@ -7,14 +7,16 @@ function escapePdf(text: string) {
 
 export function buildReportPdf(input: {
   periodLabel: string;
-  flatLabel: string;
+  flatLabel?: string;
   totals: DashboardTotals;
-  flats: { name: string; business: number; received: number; pending: number; expenses: number }[];
+  flats: { name: string; business: number; received: number; pending: number; expenses: number; stays?: number; occupiedNights?: number }[];
+  stays?: number;
+  occupiedNights?: number;
 }): Blob {
   const lines = [
-    "Anas Ledger — Business summary",
-    input.periodLabel,
-    input.flatLabel,
+    "ANAS LEDGER",
+    `${input.periodLabel} Business Report`,
+    input.flatLabel ?? "All Flats",
     "",
     `Business ${formatPKR(input.totals.business)}`,
     `Received ${formatPKR(input.totals.received)}`,
@@ -22,11 +24,17 @@ export function buildReportPdf(input: {
     `Expenses ${formatPKR(input.totals.expenses)}`,
     "",
     "Flat performance",
-    ...input.flats.map(
-      (flat) =>
-        `${flat.name}  Biz ${formatPKR(flat.business)}  Rec ${formatPKR(flat.received)}  Pend ${formatPKR(flat.pending)}  Exp ${formatPKR(flat.expenses)}`,
-    ),
+    ...input.flats.map((flat) => {
+      const nights = flat.occupiedNights != null ? `  Nights ${flat.occupiedNights}` : "";
+      const stayCount = flat.stays != null ? `  Stays ${flat.stays}` : "";
+      return `${flat.name}  Biz ${formatPKR(flat.business)}  Rec ${formatPKR(flat.received)}  Pend ${formatPKR(flat.pending)}  Exp ${formatPKR(flat.expenses)}${stayCount}${nights}`;
+    }),
   ];
+  if (input.stays != null || input.occupiedNights != null) {
+    lines.push("", "Operational summary");
+    if (input.stays != null) lines.push(`Stays ${input.stays}`);
+    if (input.occupiedNights != null) lines.push(`Occupied nights ${input.occupiedNights}`);
+  }
 
   const content = lines
     .map((line, index) => `BT /F1 11 Tf 40 ${760 - index * 16} Td (${escapePdf(line)}) Tj ET`)
