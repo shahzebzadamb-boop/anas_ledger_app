@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { PAYMENT_METHODS } from "@/types";
 import { useLedger } from "@/lib/store";
-import { formatPKR } from "@/lib/money";
+import { formatPKR, parseFormAmount } from "@/lib/money";
 
 export function RecordPaymentModal({
   clientId,
@@ -25,6 +25,9 @@ export function RecordPaymentModal({
   const [receivedById, setReceivedById] = useState(
     state.receivers.find((item) => item.name === "Anas")?.id ?? "recv_anas",
   );
+  const [overpayOk, setOverpayOk] = useState(false);
+  const value = parseFormAmount(amount, false);
+  const extra = value != null && remaining > 0 && value > remaining ? value - remaining : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
@@ -36,11 +39,15 @@ export function RecordPaymentModal({
         <label className="mt-4 block text-sm font-medium">
           Amount
           <input
-            type="number"
-            min={1}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base"
             value={amount}
-            onChange={(event) => setAmount(event.target.value)}
+            onChange={(event) => {
+              setAmount(event.target.value);
+              setOverpayOk(false);
+            }}
           />
         </label>
         <label className="mt-3 block text-sm font-medium">
@@ -71,13 +78,21 @@ export function RecordPaymentModal({
             ))}
           </select>
         </label>
+        {extra > 0 ? (
+          <div className="mt-3 space-y-2 rounded-xl border border-border p-3">
+            <p className="text-sm font-normal text-warning">
+              This is {formatPKR(extra)} more than the current pending amount.
+            </p>
+            <Button onClick={() => setOverpayOk(true)}>Record anyway</Button>
+          </div>
+        ) : null}
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
             onClick={() => {
-              const value = Number(amount);
-              if (!value || value <= 0) return;
+              if (value == null) return;
+              if (extra > 0 && !overpayOk) return;
               void persist({
                 type: "RECORD_PAYMENT",
                 payload: { clientId, stayId, amount: value, method, receivedById },

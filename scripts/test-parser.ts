@@ -1,15 +1,17 @@
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
+import { nightsBetween } from "../src/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
+  paymentLedgerRows,
   paymentStayChoices,
   stayLedgerRows,
   totalsMatchStayLedger,
   uniquePaymentStayId,
 } from "../src/lib/ledger";
 import { reducer } from "../src/lib/ledger-actions";
-import { parseAmountToken } from "../src/lib/money";
+import { parseAmountToken, parseFormAmount } from "../src/lib/money";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 import { looksLikeCorrection } from "../src/lib/parse-correction";
@@ -469,6 +471,158 @@ if (!expE || expE.amount !== 9000 || audits.length < 2) {
   console.error("CORR E FAIL", expE, audits);
 } else {
   console.log("OK correction E manual 9k with audit 18k→8k→9k");
+}
+
+if (parseFormAmount("03001234567") !== null || parseFormAmount("abc") !== null || parseFormAmount("-20000", true) !== null) {
+  failed += 1;
+  console.error("FORM AMOUNT PHONE FAIL", parseFormAmount("03001234567"));
+} else if (parseFormAmount("0", true) !== 0 || parseFormAmount("20000") !== 20000) {
+  failed += 1;
+  console.error("FORM AMOUNT FAIL");
+} else {
+  console.log("OK form amount rejects phone and accepts 20000");
+}
+
+if (nightsBetween("2026-09-22", "2026-09-25") !== 3 || nightsBetween("2026-09-22", "2026-09-22") !== 0) {
+  failed += 1;
+  console.error("NIGHTS FAIL", nightsBetween("2026-09-22", "2026-09-25"));
+} else {
+  console.log("OK nights 22 Sep → 25 Sep = 3");
+}
+
+let manual = emptyLedgerState();
+manual = reducer(manual, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "802-A",
+    clientName: "Tufail Khan",
+    phone: "03001234567",
+    checkIn: "2026-09-22T00:00:00.000Z",
+    checkOut: "2026-09-25T00:00:00.000Z",
+    nights: 3,
+    business: 60000,
+    received: 20000,
+    method: "CASH",
+    receivedByName: "Anas",
+    security: 10000,
+  },
+});
+const manualRows = stayLedgerRows(manual, monthRange, "802-A");
+const manualTotals = dashboardTotals(manual, monthRange, "802-A");
+const payRows = paymentLedgerRows(manual, monthRange, "802-A");
+const securityAmt = manual.security.filter((item) => !item.voided).reduce((sum, item) => sum + item.amount, 0);
+if (
+  !manualRows[0] ||
+  manualRows[0].nights !== 3 ||
+  manualRows[0].business !== 60000 ||
+  manualRows[0].received !== 20000 ||
+  manualRows[0].pending !== 40000 ||
+  manualTotals.business !== 60000 ||
+  manualTotals.received !== 20000 ||
+  manualTotals.pending !== 40000 ||
+  payRows.length !== 1 ||
+  payRows.reduce((sum, item) => sum + item.amount, 0) !== 20000 ||
+  securityAmt !== 10000 ||
+  manual.clients.length !== 1
+) {
+  failed += 1;
+  console.error("ADD STAY FAIL", manualRows[0], manualTotals, payRows, securityAmt);
+} else {
+  console.log("OK add stay 60k/20k/40k security 10k separate");
+}
+
+manual = reducer(manual, {
+  type: "RECORD_PAYMENT",
+  payload: {
+    clientId: manual.clients[0].id,
+    stayId: manual.stays[0].id,
+    amount: 10000,
+    method: "EASYPAISA",
+    receivedByName: "Khizer",
+  },
+});
+const afterKhizer = stayLedgerRows(manual, monthRange, "802-A")[0];
+const afterTotals = dashboardTotals(manual, monthRange, "802-A");
+if (
+  !afterKhizer ||
+  afterKhizer.business !== 60000 ||
+  afterKhizer.received !== 30000 ||
+  afterKhizer.pending !== 30000 ||
+  afterTotals.business !== 60000 ||
+  afterTotals.received !== 30000 ||
+  afterTotals.pending !== 30000 ||
+  !afterKhizer.receivedBy.includes("Khizer") ||
+  !afterKhizer.receivedBy.includes("Anas")
+) {
+  failed += 1;
+  console.error("ADD PAYMENT KHIZER FAIL", afterKhizer, afterTotals);
+} else {
+  console.log("OK add payment 10k Khizer, business unchanged");
+}
+
+manual = reducer(manual, {
+  type: "ADD_EXPENSE",
+  payload: {
+    amount: 5000,
+    category: "CLEANING",
+    description: "Sofa Cleaning",
+    method: "CASH",
+    flat: "802-A",
+    spentAt: "2026-09-23T00:00:00.000Z",
+  },
+});
+const expLedger = expenseLedgerRows(manual, monthRange, "802-A");
+const withExpense = dashboardTotals(manual, monthRange, "802-A");
+if (
+  withExpense.expenses !== 5000 ||
+  withExpense.business !== 60000 ||
+  !expLedger.some((item) => item.amount === 5000 && item.description === "Sofa Cleaning")
+) {
+  failed += 1;
+  console.error("ADD EXPENSE FAIL", withExpense, expLedger);
+} else {
+  console.log("OK add expense 5k sofa cleaning");
+}
+
+const beforeDup = manual.clients.length;
+manual = reducer(manual, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "408-B",
+    clientName: "Other Name",
+    phone: "03001234567",
+    checkIn: "2026-09-26T00:00:00.000Z",
+    checkOut: "2026-09-28T00:00:00.000Z",
+    nights: 2,
+    business: 20000,
+    received: 0,
+  },
+});
+if (manual.clients.length !== beforeDup) {
+  failed += 1;
+  console.error("DUP CLIENT FAIL", manual.clients);
+} else {
+  console.log("OK existing phone reuses client");
+}
+
+const unchanged = reducer(manual, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "802-A",
+    clientName: "Bad Dates",
+    phone: "03111234567",
+    checkIn: "2026-09-25T00:00:00.000Z",
+    checkOut: "2026-09-22T00:00:00.000Z",
+    nights: 0,
+    business: 10000,
+    received: 0,
+  },
+});
+if (unchanged.stays.length !== manual.stays.length) {
+  failed += 1;
+  console.error("BAD DATES STAY CREATED");
+} else {
+  console.log("OK checkout before check-in rejected");
 }
 
 if (failed) {

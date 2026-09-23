@@ -68,7 +68,13 @@ export function Dashboard() {
           </button>
         ) : null}
       </div>
-      <SummaryCards totals={totals} />
+      <SummaryCards
+        totals={totals}
+        flat={selectedFlat}
+        preset={preset}
+        from={custom.from.toISOString().slice(0, 10)}
+        to={custom.to.toISOString().slice(0, 10)}
+      />
       <DateFilter
         flats={state.flats}
         selectedFlat={selectedFlat}

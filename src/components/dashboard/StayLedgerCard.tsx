@@ -4,9 +4,10 @@ import { useState } from "react";
 import { formatDate, formatStayDates } from "@/lib/dates";
 import { formatPKR } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
-import type { StayLedgerRow } from "@/lib/ledger";
+import { reminderMessage, whatsappLink, type StayLedgerRow } from "@/lib/ledger";
 import { cn } from "@/lib/utils";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
+import { AddPaymentSheet } from "@/components/ledger/AddPaymentSheet";
 
 function MoneyRow({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
@@ -20,12 +21,33 @@ function MoneyRow({ label, value, accent }: { label: string; value: number; acce
 export function StayLedgerCard({
   row,
   showFlat,
+  showDates,
+  showPhone,
+  showWhatsApp,
+  showActions,
 }: {
   row: StayLedgerRow;
   showFlat: boolean;
+  showDates?: boolean;
+  showPhone?: boolean;
+  showWhatsApp?: boolean;
+  showActions?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ kind: "stay" | "payment"; id: string } | null>(null);
+  const [addPayment, setAddPayment] = useState(false);
+  const securityHeld = row.security
+    .filter((item) => item.kind === "RECEIVED")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const reminder = reminderMessage({
+    stayId: row.stayId,
+    clientId: row.clientId,
+    clientName: row.clientName,
+    phone: row.phone,
+    remaining: row.pending,
+    flat: row.flat,
+    checkOut: row.checkOut,
+  });
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -45,11 +67,18 @@ export function StayLedgerCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">{row.clientName}</p>
+            {showPhone && row.phone ? (
+              <p className="mt-0.5 text-xs font-normal text-muted">{displayPhone(row.phone)}</p>
+            ) : null}
             <p className="mt-0.5 text-xs font-normal text-muted">
-              {showFlat ? `Flat ${row.flat} · ` : ""}
+              {showFlat ? `${row.flat} · ` : ""}
               {row.nights} night{row.nights === 1 ? "" : "s"}
-              {showFlat ? "" : ` · ${formatStayDates(row.checkIn, row.checkOut)}`}
             </p>
+            {showDates || !showFlat ? (
+              <p className="mt-0.5 text-xs font-normal text-muted">
+                {formatStayDates(row.checkIn, row.checkOut).replace(" – ", " → ")}
+              </p>
+            ) : null}
           </div>
           <p className={cn("shrink-0 text-[11px] font-medium", row.pending > 0 ? "text-warning" : "text-muted")}>
             {row.status}
@@ -67,48 +96,55 @@ export function StayLedgerCard({
           </p>
         ) : null}
       </div>
+      {showWhatsApp && row.phone && row.pending > 0 ? (
+        <div className="px-3.5 pb-3">
+          <a
+            href={whatsappLink(row.phone, reminder)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
+            onClick={(event) => event.stopPropagation()}
+          >
+            WhatsApp
+          </a>
+        </div>
+      ) : null}
       {open ? (
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
-          {showFlat ? (
-            <p className="text-xs font-normal text-muted">{formatStayDates(row.checkIn, row.checkOut)}</p>
-          ) : null}
-          {row.phone ? <p className="text-xs font-normal text-muted">{displayPhone(row.phone)}</p> : null}
-          <button
-            type="button"
-            className="text-sm font-medium text-secondary"
-            onClick={() => setEdit({ kind: "stay", id: row.stayId })}
-          >
-            Edit
-          </button>
+          <p className="text-xs font-normal text-muted">
+            {row.clientName}
+            {row.phone ? ` · ${displayPhone(row.phone)}` : ""}
+          </p>
+          <p className="text-xs font-normal text-muted">
+            {row.flat} · {formatStayDates(row.checkIn, row.checkOut).replace(" – ", " → ")} · {row.nights} nights
+          </p>
+          <MoneyRow label="Business" value={row.business} />
+          <MoneyRow label="Received" value={row.received} accent="text-primary" />
+          <MoneyRow label="Pending" value={row.pending} accent={row.pending > 0 ? "text-warning" : undefined} />
+          {securityHeld > 0 ? <MoneyRow label="Security" value={securityHeld} /> : null}
           {row.payments.length > 0 ? (
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payments</p>
-              {row.payments.map((payment) => (
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment history</p>
+              {row.payments.map((payment, index) => (
                 <button
                   key={payment.id}
                   type="button"
                   className="block w-full text-left"
                   onClick={() => setEdit({ kind: "payment", id: payment.id })}
                 >
-                  <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
+                  <p className="text-xs font-medium">Payment {index + 1}</p>
                   <p className="text-sm">
                     <span className="money">{formatPKR(payment.amount)}</span>
                     <span className="text-muted"> · {payment.method}</span>
                   </p>
                   <p className="text-xs font-normal text-muted">Received by {payment.receivedBy}</p>
+                  <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
                 </button>
               ))}
-              <MoneyRow label="Total received" value={row.received} accent="text-primary" />
-              <MoneyRow label="Pending" value={row.pending} accent={row.pending > 0 ? "text-warning" : undefined} />
             </div>
           ) : (
             <p className="text-xs font-normal text-muted">No payments yet.</p>
           )}
-          {row.security.map((item) => (
-            <p key={item.id} className="text-xs font-normal text-muted">
-              {item.kind === "RECEIVED" ? "Security" : "Security applied"} {formatPKR(item.amount)}
-            </p>
-          ))}
           {row.discounts.map((item) => (
             <p key={item.id} className="text-xs font-normal text-muted">
               Discount {formatPKR(item.amount)}
@@ -120,9 +156,55 @@ export function StayLedgerCard({
               {note}
             </p>
           ))}
+          {showActions !== false ? (
+            <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+              <button type="button" className="min-h-11 text-sm font-medium text-secondary" onClick={() => setAddPayment(true)}>
+                Add Payment
+              </button>
+              <button
+                type="button"
+                className="min-h-11 text-sm font-medium text-secondary"
+                onClick={() => setEdit({ kind: "stay", id: row.stayId })}
+              >
+                Edit Stay
+              </button>
+              {row.phone ? (
+                <a
+                  href={whatsappLink(row.phone, reminder)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
+                >
+                  WhatsApp
+                </a>
+              ) : null}
+              <button
+                type="button"
+                className="min-h-11 text-sm font-medium text-secondary"
+                onClick={() => setEdit({ kind: "stay", id: row.stayId })}
+              >
+                Void Entry
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="text-sm font-medium text-secondary"
+              onClick={() => setEdit({ kind: "stay", id: row.stayId })}
+            >
+              Edit
+            </button>
+          )}
         </div>
       ) : null}
       {edit ? <EntryEditor kind={edit.kind} id={edit.id} onClose={() => setEdit(null)} /> : null}
+      {addPayment ? (
+        <AddPaymentSheet
+          stayId={row.stayId}
+          clientId={row.clientId}
+          onClose={() => setAddPayment(false)}
+        />
+      ) : null}
     </div>
   );
 }

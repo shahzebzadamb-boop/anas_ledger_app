@@ -118,6 +118,7 @@ export type StayChoice = {
   nights: number;
   pending: number;
   checkIn: string;
+  checkOut: string;
 };
 
 export function paymentStayChoices(
@@ -134,6 +135,7 @@ export function paymentStayChoices(
     nights: stay.nights,
     pending: stayRemaining(stay.id, state),
     checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
   });
   const open = stays.filter((stay) => stayRemaining(stay.id, state) > 0).sort((a, b) => a.checkIn.localeCompare(b.checkIn));
   if (open.length > 0) return open.map(toChoice);
@@ -208,10 +210,26 @@ export type StayLedgerRow = {
 export type ExpenseLedgerRow = {
   id: string;
   description: string;
+  category: string;
   amount: number;
   flat: string | null;
   method: string;
   spentAt: string;
+  notes: string | null;
+};
+
+export type PaymentLedgerRow = {
+  id: string;
+  stayId: string | null;
+  clientId: string;
+  clientName: string;
+  phone: string | null;
+  flat: string;
+  amount: number;
+  method: string;
+  receivedBy: string;
+  receivedAt: string;
+  notes: string | null;
 };
 
 export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFlat: string): StayLedgerRow[] {
@@ -278,11 +296,48 @@ export function expenseLedgerRows(
     .map((item) => ({
       id: item.id,
       description: item.description,
+      category: item.category,
       amount: item.amount,
       flat: item.flatId ? flatName(state, item.flatId) : null,
       method: methodLabel(item.method),
       spentAt: item.spentAt,
+      notes: item.notes,
     }));
+}
+
+export function paymentLedgerRows(
+  state: LedgerState,
+  range: DateRange,
+  selectedFlat: string,
+): PaymentLedgerRow[] {
+  const stays = stayLedgerRows(state, range, selectedFlat);
+  const stayById = new Map(stays.map((item) => [item.stayId, item]));
+  return state.payments
+    .filter(
+      (item) =>
+        isLive(item) &&
+        item.stayId != null &&
+        stayById.has(item.stayId) &&
+        isPlausibleLedgerAmount(item.amount) &&
+        isRentPayment(item, state.reviews),
+    )
+    .sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1))
+    .map((item) => {
+      const stay = stayById.get(item.stayId ?? "");
+      return {
+        id: item.id,
+        stayId: item.stayId,
+        clientId: item.clientId,
+        clientName: stay?.clientName ?? state.clients.find((client) => client.id === item.clientId)?.name ?? "Customer",
+        phone: stay?.phone ?? state.clients.find((client) => client.id === item.clientId)?.phone ?? null,
+        flat: stay?.flat ?? (item.flatId ? flatName(state, item.flatId) : "—"),
+        amount: item.amount,
+        method: methodLabel(item.method),
+        receivedBy: receiverName(state, item.receivedById),
+        receivedAt: item.receivedAt,
+        notes: item.notes,
+      };
+    });
 }
 
 export function dashboardTotals(

@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 const WRITE_TYPES = new Set<Action["type"]>([
   "RECORD_PAYMENT",
+  "ADD_STAY",
   "ADD_EXPENSE",
   "APPLY_QUICK_ENTRY",
   "SET_CLIENT_PHONE",

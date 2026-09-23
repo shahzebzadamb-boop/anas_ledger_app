@@ -7,7 +7,8 @@ import {
   uniquePaymentStayId,
 } from "@/lib/ledger";
 import { applyCorrection, syncStayPending, withAudit } from "@/lib/corrections";
-import { formatPKR } from "@/lib/money";
+import { formatPKR, isPlausibleLedgerAmount, isValidMoneyAmount } from "@/lib/money";
+import { nightsBetween } from "@/lib/dates";
 import { normalizePhone } from "@/lib/phone";
 import type { CorrectionDraft } from "@/lib/parse-correction";
 import type { ConfirmableDraft } from "@/lib/parse-quick-entry";
@@ -32,11 +33,30 @@ export type RecordPaymentInput = {
   method: PaymentMethod;
   receivedById?: string | null;
   receivedByName?: string | null;
+  receivedAt?: string;
+  notes?: string | null;
+};
+
+export type AddStayInput = {
+  flat: string;
+  clientName: string;
+  phone: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  business: number;
+  received: number;
+  method?: PaymentMethod;
+  receivedById?: string | null;
+  receivedByName?: string | null;
+  security?: number;
+  notes?: string | null;
 };
 
 export type Action =
   | { type: "HYDRATE"; payload: LedgerState }
   | { type: "RECORD_PAYMENT"; payload: RecordPaymentInput }
+  | { type: "ADD_STAY"; payload: AddStayInput }
   | {
       type: "ADD_EXPENSE";
       payload: {
@@ -45,6 +65,8 @@ export type Action =
         description: string;
         method: PaymentMethod;
         flat?: string | null;
+        spentAt?: string;
+        notes?: string | null;
       };
     }
   | { type: "APPLY_QUICK_ENTRY"; parsed: ConfirmableDraft }
@@ -421,7 +443,95 @@ function openStayFor(state: LedgerState, clientId: string, flatName: string | nu
   return open ?? null;
 }
 
+function applyAddStay(state: LedgerState, input: AddStayInput): LedgerState {
+  const phone = normalizePhone(input.phone);
+  const name = input.clientName.trim();
+  const nights = nightsBetween(input.checkIn, input.checkOut);
+  if (!phone || !name || nights < 1) return state;
+  if (!isPlausibleLedgerAmount(input.business)) return state;
+  if (!isValidMoneyAmount(input.received, true)) return state;
+  const security = input.security ?? 0;
+  if (security > 0 && !isPlausibleLedgerAmount(security)) return state;
+
+  const found = findClient(state, name, phone);
+  let next = found.state;
+  const client = found.client;
+  const flatId = `flat_${input.flat}`;
+  if (!next.flats.some((item) => item.id === flatId)) return next;
+
+  const stayId = createId("stay");
+  const stay = {
+    id: stayId,
+    createdAt: nowISO(),
+    flatId,
+    clientId: client.id,
+    checkIn: asDate(input.checkIn).toISOString(),
+    checkOut: asDate(input.checkOut).toISOString(),
+    nights,
+    notifyEnabled: input.business - input.received > 0,
+    activePending: input.business - input.received > 0,
+    importKey: null,
+    voided: false,
+  };
+  const rent = {
+    id: createId("rent"),
+    stayId,
+    clientId: client.id,
+    flatId,
+    amount: input.business,
+    occurredAt: asDate(input.checkIn).toISOString(),
+    note: input.notes?.trim() || null,
+    voided: false,
+  };
+  next = {
+    ...next,
+    stays: [stay, ...next.stays],
+    rentEntries: [rent, ...next.rentEntries],
+  };
+  next = withActivity(next, {
+    action: "RENT_CREATED",
+    entityType: "Stay",
+    entityId: stayId,
+    summary: `Rent ${formatPKR(input.business)} for ${client.name}.`,
+  });
+  if (input.received > 0) {
+    next = applyPayment(next, {
+      clientId: client.id,
+      stayId,
+      amount: input.received,
+      method: input.method ?? "CASH",
+      receivedById: input.receivedById,
+      receivedByName: input.receivedByName,
+      receivedAt: asDate(input.checkIn).toISOString(),
+    });
+  }
+  if (security > 0) {
+    const row = {
+      id: createId("sec"),
+      clientId: client.id,
+      stayId,
+      flatId,
+      kind: "RECEIVED" as const,
+      amount: security,
+      occurredAt: asDate(input.checkIn).toISOString(),
+      notes: null,
+      voided: false,
+    };
+    next = withActivity(
+      { ...next, security: [row, ...next.security] },
+      {
+        action: "SECURITY_RECEIVED",
+        entityType: "Security",
+        entityId: row.id,
+        summary: `Security ${formatPKR(security)} from ${client.name}.`,
+      },
+    );
+  }
+  return syncStayPending(next, stayId);
+}
+
 function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerState {
+  if (!isPlausibleLedgerAmount(input.amount)) return state;
   const foundReceiver = findReceiver(state, input);
   let next = foundReceiver.state;
   const receiver = foundReceiver.receiver;
@@ -439,8 +549,8 @@ function applyPayment(state: LedgerState, input: RecordPaymentInput): LedgerStat
     flatId: stay?.flatId ?? null,
     amount: input.amount,
     method: input.method,
-    receivedAt: nowISO(),
-    notes: null,
+    receivedAt: input.receivedAt ?? nowISO(),
+    notes: input.notes ?? null,
     receivedById: receiver.id,
     voided: false,
   };
@@ -517,6 +627,8 @@ function reducer(state: LedgerState, action: Action): LedgerState {
       return normalizeState(action.payload);
     case "RECORD_PAYMENT":
       return applyPayment(state, action.payload);
+    case "ADD_STAY":
+      return applyAddStay(state, action.payload);
     case "ADD_EXPENSE": {
       const expense: Expense = {
         id: createId("exp"),
@@ -526,8 +638,8 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         category: action.payload.category,
         description: action.payload.description,
         method: action.payload.method,
-        spentAt: nowISO(),
-        notes: null,
+        spentAt: action.payload.spentAt ?? nowISO(),
+        notes: action.payload.notes ?? null,
         voided: false,
       };
       return withActivity(

@@ -21,6 +21,22 @@ export function isPlausibleLedgerAmount(amount: number): boolean {
   return Number.isFinite(amount) && amount > 0 && amount <= MAX_LEDGER_AMOUNT && !isPhoneLikeAmount(amount);
 }
 
+export function isValidMoneyAmount(amount: number, allowZero = false): boolean {
+  if (!Number.isFinite(amount) || !Number.isSafeInteger(amount)) return false;
+  if (amount < 0 || amount > MAX_LEDGER_AMOUNT) return false;
+  if (amount === 0) return allowZero;
+  return !isPhoneLikeAmount(amount);
+}
+
+/** Parse a dedicated money input. Never use this on phone fields. */
+export function parseFormAmount(raw: string, allowZero = false): number | null {
+  const cleaned = raw.replace(/,/g, "").replace(/^rs\.?\s*/i, "").trim();
+  if (cleaned === "") return allowZero ? 0 : null;
+  if (!/^\d+$/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return isValidMoneyAmount(value, allowZero) ? value : null;
+}
+
 export function parseAmountToken(token: string): number | null {
   const cleaned = token
     .replace(/,/g, "")

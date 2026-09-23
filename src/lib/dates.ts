@@ -64,6 +64,23 @@ export function formatStayDates(checkIn: string, checkOut: string): string {
   return `${formatDateShort(checkIn)} – ${formatDateShort(checkOut)}`;
 }
 
+export function nightsBetween(checkIn: Date | string, checkOut: Date | string): number {
+  return differenceInCalendarDays(startOfDay(new Date(checkOut)), startOfDay(new Date(checkIn)));
+}
+
+export function karachiDateInput(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+export function dateInputToISO(value: string): string {
+  return startOfDay(new Date(`${value}T00:00:00`)).toISOString();
+}
+
 export function overdueDays(dueDateISO: string, now = new Date()): number {
   const due = startOfDay(new Date(dueDateISO));
   const today = startOfDay(now);

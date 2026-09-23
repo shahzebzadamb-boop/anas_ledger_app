@@ -1,24 +1,43 @@
-import { Card } from "@/components/ui/Card";
-import { formatPKR } from "@/lib/money";
-import type { DashboardTotals } from "@/types";
+"use client";
 
-const cards = [
+import Link from "next/link";
+import { formatPKR } from "@/lib/money";
+import { ledgerHref, type LedgerView } from "@/lib/ledger-href";
+import type { DashboardTotals, DateFilterPreset } from "@/types";
+
+const cards: { key: LedgerView; label: string; amountClass: string }[] = [
   { key: "business", label: "Business", amountClass: "text-foreground" },
   { key: "received", label: "Received", amountClass: "text-primary" },
   { key: "pending", label: "Pending", amountClass: "text-warning" },
   { key: "expenses", label: "Expenses", amountClass: "text-foreground" },
-] as const;
+];
 
-export function SummaryCards({ totals }: { totals: DashboardTotals }) {
+export function SummaryCards({
+  totals,
+  flat,
+  preset,
+  from,
+  to,
+}: {
+  totals: DashboardTotals;
+  flat: string;
+  preset: DateFilterPreset;
+  from?: string;
+  to?: string;
+}) {
   return (
     <section className="space-y-2">
       <h2 className="section-title">Money summary</h2>
       <div className="grid grid-cols-2 gap-2.5">
         {cards.map((card) => (
-          <Card key={card.key} className="p-3">
+          <Link
+            key={card.key}
+            href={ledgerHref({ view: card.key, flat, preset, from, to })}
+            className="rounded-2xl border border-border bg-surface p-3"
+          >
             <p className="card-label">{card.label}</p>
             <p className={`money mt-1.5 text-lg ${card.amountClass}`}>{formatPKR(totals[card.key])}</p>
-          </Card>
+          </Link>
         ))}
       </div>
     </section>
