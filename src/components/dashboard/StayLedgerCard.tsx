@@ -4,7 +4,8 @@ import { useState } from "react";
 import { formatDate, formatStayDates } from "@/lib/dates";
 import { formatPKR } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
-import { reminderMessage, whatsappLink, type StayLedgerRow } from "@/lib/ledger";
+import { clientWhatsAppHref } from "@/lib/reminders";
+import type { StayLedgerRow } from "@/lib/ledger";
 import { cn } from "@/lib/utils";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 import { AddPaymentSheet } from "@/components/ledger/AddPaymentSheet";
@@ -39,14 +40,10 @@ export function StayLedgerCard({
   const securityHeld = row.security
     .filter((item) => item.kind === "RECEIVED")
     .reduce((sum, item) => sum + item.amount, 0);
-  const reminder = reminderMessage({
-    stayId: row.stayId,
-    clientId: row.clientId,
-    clientName: row.clientName,
+  const reminderHref = clientWhatsAppHref({
     phone: row.phone,
-    remaining: row.pending,
-    flat: row.flat,
-    checkOut: row.checkOut,
+    clientName: row.clientName,
+    pendingAmount: row.pending,
   });
 
   return (
@@ -96,10 +93,10 @@ export function StayLedgerCard({
           </p>
         ) : null}
       </div>
-      {showWhatsApp && row.phone && row.pending > 0 ? (
+      {showWhatsApp && reminderHref ? (
         <div className="px-3.5 pb-3">
           <a
-            href={whatsappLink(row.phone, reminder)}
+            href={reminderHref}
             target="_blank"
             rel="noreferrer"
             className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
@@ -168,9 +165,9 @@ export function StayLedgerCard({
               >
                 Edit Stay
               </button>
-              {row.phone ? (
+              {reminderHref ? (
                 <a
-                  href={whatsappLink(row.phone, reminder)}
+                  href={reminderHref}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex min-h-11 items-center text-sm font-medium text-primary"

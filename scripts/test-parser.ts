@@ -7,11 +7,19 @@ import {
   paymentLedgerRows,
   paymentStayChoices,
   stayLedgerRows,
+  stayRemaining,
   totalsMatchStayLedger,
   uniquePaymentStayId,
 } from "../src/lib/ledger";
 import { reducer } from "../src/lib/ledger-actions";
 import { parseAmountToken, parseFormAmount, sanitizeMoneyInput, moneyInputFromSaved } from "../src/lib/money";
+import { pendingNotice } from "../src/lib/notifications";
+import {
+  buildAnasPendingNotification,
+  buildClientWhatsAppReminder,
+  clientFirstName,
+  clientWhatsAppHref,
+} from "../src/lib/reminders";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 import { looksLikeCorrection } from "../src/lib/parse-correction";
@@ -560,6 +568,146 @@ if (nightsBetween("2026-09-22", "2026-09-25") !== 3 || nightsBetween("2026-09-22
   console.error("NIGHTS FAIL", nightsBetween("2026-09-22", "2026-09-25"));
 } else {
   console.log("OK nights 22 Sep → 25 Sep = 3");
+}
+
+function assertReminder(label: string, got: string | null, want: string) {
+  if (got !== want) {
+    failed += 1;
+    console.error(`${label} FAIL`, JSON.stringify(got), "!=", JSON.stringify(want));
+  } else {
+    console.log("OK", label);
+  }
+}
+
+assertReminder(
+  "client wa Tahir 24000",
+  buildClientWhatsAppReminder({ clientName: "Tahir Wajid", pendingAmount: 24000 }),
+  "Salam Tahir Bhai ap ke ye Rs 24,000 pending hay please send screenshot once paid thanks",
+);
+assertReminder(
+  "client wa Tufail 10000",
+  buildClientWhatsAppReminder({ clientName: "Tufail Khan", pendingAmount: 10000 }),
+  "Salam Tufail Bhai ap ke ye Rs 10,000 pending hay please send screenshot once paid thanks",
+);
+assertReminder(
+  "client wa missing name 5000",
+  buildClientWhatsAppReminder({ clientName: "", pendingAmount: 5000 }),
+  "Salam Bhai ap ke ye Rs 5,000 pending hay please send screenshot once paid thanks",
+);
+assertReminder(
+  "client wa null name",
+  buildClientWhatsAppReminder({ clientName: null, pendingAmount: 5000 }),
+  "Salam Bhai ap ke ye Rs 5,000 pending hay please send screenshot once paid thanks",
+);
+assertReminder(
+  "client wa undefined name",
+  buildClientWhatsAppReminder({ pendingAmount: 5000 }),
+  "Salam Bhai ap ke ye Rs 5,000 pending hay please send screenshot once paid thanks",
+);
+
+if (buildClientWhatsAppReminder({ clientName: "Tahir Wajid", pendingAmount: 0 }) !== null) {
+  failed += 1;
+  console.error("FULLY PAID CLIENT WA FAIL");
+} else {
+  console.log("OK no client WhatsApp when pending is 0");
+}
+
+if (clientFirstName("Tahir Wajid") !== "Tahir" || clientFirstName("Tufail Khan") !== "Tufail" || clientFirstName("Syed Ali Shah") !== "Syed") {
+  failed += 1;
+  console.error("FIRST NAME FAIL", clientFirstName("Tahir Wajid"), clientFirstName("Syed Ali Shah"));
+} else {
+  console.log("OK first name only");
+}
+
+const tahirHref = clientWhatsAppHref({
+  phone: "03106633005",
+  clientName: "Tahir Wajid",
+  pendingAmount: 24000,
+});
+const expectedText = "Salam Tahir Bhai ap ke ye Rs 24,000 pending hay please send screenshot once paid thanks";
+const expectedHref = `https://wa.me/923106633005?text=${encodeURIComponent(expectedText)}`;
+if (tahirHref !== expectedHref) {
+  failed += 1;
+  console.error("WA HREF FAIL", tahirHref);
+} else if (tahirHref?.includes("Za kana") || tahirHref?.includes("rawakhla") || tahirHref?.includes("Anas jan")) {
+  failed += 1;
+  console.error("INTERNAL WORDING LEAKED TO CLIENT WA");
+} else {
+  console.log("OK wa.me 03106633005 -> 923106633005 with encoded client text");
+}
+
+const internal = buildAnasPendingNotification({
+  clientName: "Tahir Wajid",
+  pendingAmount: 24000,
+  flat: "802-A",
+});
+const internalNotice = pendingNotice({
+  stayId: "s1",
+  clientId: "c1",
+  clientName: "Tahir Wajid",
+  phone: "03106633005",
+  remaining: 24000,
+  flat: "802-A",
+  checkOut: "2026-09-25",
+});
+if (internal !== "Za kana Anas jan, Tahir na Rs 24,000 rawakhla — Flat 802-A") {
+  failed += 1;
+  console.error("INTERNAL NOTICE FAIL", internal);
+} else if (internalNotice !== internal) {
+  failed += 1;
+  console.error("PENDING NOTICE WRAPPER FAIL", internalNotice);
+} else if (internal.includes("Salam") || internal.includes("screenshot")) {
+  failed += 1;
+  console.error("CLIENT WORDING LEAKED TO INTERNAL NOTICE");
+} else {
+  console.log("OK internal Anas notification");
+}
+
+const clientText = buildClientWhatsAppReminder({ clientName: "Tahir Wajid", pendingAmount: 24000 }) ?? "";
+if (/Za kana|rawakhla|Anas jan|Flat 802/i.test(clientText)) {
+  failed += 1;
+  console.error("CLIENT TEMPLATE HAS INTERNAL/FLAT WORDING", clientText);
+} else {
+  console.log("OK client template has no internal wording and no flat");
+}
+
+let pendingStay = emptyLedgerState();
+pendingStay = reducer(pendingStay, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "802-A",
+    clientName: "Tahir Wajid",
+    phone: "03106633005",
+    checkIn: "2026-09-22T00:00:00.000Z",
+    checkOut: "2026-09-25T00:00:00.000Z",
+    nights: 3,
+    business: 24000,
+    received: 0,
+  },
+});
+const stayId = pendingStay.stays[0]?.id ?? "";
+const firstPending = stayRemaining(stayId, pendingStay);
+pendingStay = reducer(pendingStay, {
+  type: "RECORD_PAYMENT",
+  payload: {
+    clientId: pendingStay.clients[0]?.id ?? "",
+    stayId,
+    amount: 10000,
+    method: "CASH",
+    receivedByName: "Anas",
+  },
+});
+const remainingAfterPartial = stayRemaining(stayId, pendingStay);
+assertReminder(
+  "client wa after partial 14000",
+  buildClientWhatsAppReminder({ clientName: "Tahir Wajid", pendingAmount: remainingAfterPartial }),
+  "Salam Tahir Bhai ap ke ye Rs 14,000 pending hay please send screenshot once paid thanks",
+);
+if (firstPending !== 24000 || remainingAfterPartial !== 14000) {
+  failed += 1;
+  console.error("LIVE PENDING AFTER PAYMENT FAIL", firstPending, remainingAfterPartial);
+} else {
+  console.log("OK live pending 24000 -> 14000 after Rs 10,000 payment");
 }
 
 let manual = emptyLedgerState();

@@ -11,14 +11,13 @@ import {
   clientProfile,
   flatName,
   receiverName,
-  reminderMessage,
   stayCollectible,
   stayRemaining,
   stayRevenue,
-  whatsappLink,
 } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
+import { clientWhatsAppHref } from "@/lib/reminders";
 import { useLedger } from "@/lib/store";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
@@ -39,29 +38,25 @@ export default function ClientDetailPage() {
   }
 
   const profile = clientProfile(client.id, state);
-  const message = reminderMessage({
-    stayId: profile.stays[0]?.id ?? "",
-    clientId: client.id,
-    clientName: client.name,
+  const whatsapp = clientWhatsAppHref({
     phone: client.phone,
-    remaining: profile.currentlyPending,
-    flat: profile.lastFlat ?? "",
-    checkOut: profile.lastStay ?? "",
+    clientName: client.name,
+    pendingAmount: profile.currentlyPending,
   });
 
   return (
     <div className="space-y-4">
       <PageHeader title={client.name} subtitle={displayPhone(client.phone)} />
-      {client.phone ? (
+      {whatsapp ? (
         <a
           className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-primary text-sm font-semibold text-primary"
-          href={whatsappLink(client.phone, message)}
+          href={whatsapp}
           target="_blank"
           rel="noreferrer"
         >
           WhatsApp
         </a>
-      ) : (
+      ) : client.phone ? null : (
         <div className="space-y-2">
           <input
             className="w-full rounded-xl border border-border bg-input px-3 text-base"

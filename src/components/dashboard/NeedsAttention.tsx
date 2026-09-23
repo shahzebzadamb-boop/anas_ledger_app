@@ -5,13 +5,20 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { RecordPaymentModal } from "@/components/dashboard/RecordPaymentModal";
 import { overdueDays } from "@/lib/dates";
-import { reminderMessage, whatsappLink } from "@/lib/ledger";
 import { formatPKR } from "@/lib/money";
+import { clientWhatsAppHref } from "@/lib/reminders";
 import type { AttentionItem } from "@/types";
 
 function AttentionCard({ item }: { item: AttentionItem }) {
   const [open, setOpen] = useState(false);
   const overdue = overdueDays(item.checkOut) > 0;
+  const whatsapp = item.remaining > 0
+    ? clientWhatsAppHref({
+        phone: item.phone,
+        clientName: item.clientName,
+        pendingAmount: item.remaining,
+      })
+    : null;
 
   return (
     <Card className="space-y-2.5 p-3">
@@ -31,10 +38,10 @@ function AttentionCard({ item }: { item: AttentionItem }) {
         <Button variant="secondary" onClick={() => setOpen(true)}>
           Record Payment
         </Button>
-        {item.phone ? (
+        {whatsapp ? (
           <a
             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-primary text-sm font-semibold text-primary"
-            href={whatsappLink(item.phone, reminderMessage(item))}
+            href={whatsapp}
             target="_blank"
             rel="noreferrer"
           >

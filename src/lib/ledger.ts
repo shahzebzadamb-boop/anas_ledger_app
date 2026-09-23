@@ -7,6 +7,7 @@ import type {
 } from "@/types";
 import { inRange } from "@/lib/dates";
 import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
+import { normalizePhone } from "@/lib/phone";
 
 export function isLive<T extends { voided?: boolean }>(item: T): boolean {
   return !item.voided;
@@ -402,12 +403,8 @@ export function needsAttention(state: LedgerState, selectedFlat = "all"): Attent
 }
 
 export function whatsappLink(phone: string, text: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-}
-
-export function reminderMessage(item: AttentionItem): string {
-  return `Za kana jan, ${item.clientName} na Rs ${item.remaining.toLocaleString("en-PK")} rawakhla — Flat ${item.flat}`;
+  const international = normalizePhone(phone) ?? phone.replace(/\D/g, "");
+  return `https://wa.me/${international}?text=${encodeURIComponent(text)}`;
 }
 
 export function reviewMonth(item: { month?: string | null; date?: string | null; sourceSheet: string }): string {

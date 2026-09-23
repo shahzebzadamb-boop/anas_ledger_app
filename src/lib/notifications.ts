@@ -1,11 +1,11 @@
 import {
   dashboardTotals,
   isStayPendingActive,
-  reminderMessage,
   stayRemaining,
 } from "@/lib/ledger";
 import { inRange, rangeForPreset } from "@/lib/dates";
 import { formatPKR } from "@/lib/money";
+import { buildAnasPendingNotification } from "@/lib/reminders";
 import type { AttentionItem, LedgerState } from "@/types";
 
 export const KARACHI = "Asia/Karachi";
@@ -94,5 +94,9 @@ export function notifyBrowser(title: string, body: string) {
 }
 
 export function pendingNotice(item: AttentionItem): string {
-  return reminderMessage(item);
+  return buildAnasPendingNotification({
+    clientName: item.clientName,
+    pendingAmount: item.remaining,
+    flat: item.flat,
+  });
 }
