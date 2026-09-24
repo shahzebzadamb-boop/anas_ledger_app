@@ -1,9 +1,12 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ensureMonthlyReportsSchema } from "@/lib/server/monthly-reports";
+import { ensureReceiptsSchema } from "@/lib/server/receipts";
 
 export const CLEAN_START_KEY = "clean_start_20260923";
 
 const BUSINESS_TABLES = [
+  "receipt_versions",
+  "receipts",
   "notifications",
   "reminder_silences",
   "security_transactions",
@@ -184,6 +187,7 @@ export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResul
   await ensureReceiversSchema(pool);
   await ensureCorrectionsSchema(pool);
   await ensureMonthlyReportsSchema(pool);
+  await ensureReceiptsSchema(pool);
   const result = await runCleanStartIfNeeded(pool);
   if (result.ran) {
     console.info("ANAS_CLEAN_START", JSON.stringify(result));

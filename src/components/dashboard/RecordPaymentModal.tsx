@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { PAYMENT_METHODS } from "@/types";
 import { useLedger } from "@/lib/store";
 import { formatPKR, moneyInputFromSaved, parseFormAmount } from "@/lib/money";
+import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 
 export function RecordPaymentModal({
@@ -13,12 +14,14 @@ export function RecordPaymentModal({
   remaining,
   clientName,
   onClose,
+  onAdded,
 }: {
   clientId: string;
   stayId: string;
   remaining: number;
   clientName: string;
   onClose: () => void;
+  onAdded?: (info?: AddedReceiptInfo) => void;
 }) {
   const { persist, state } = useLedger();
   const lock = useRef(false);
@@ -40,10 +43,12 @@ export function RecordPaymentModal({
     setSaving(true);
     (document.activeElement as HTMLElement | null)?.blur?.();
     try {
-      await persist({
+      const before = state;
+      const next = await persist({
         type: "RECORD_PAYMENT",
         payload: { clientId, stayId, amount: value, method, receivedById },
       });
+      onAdded?.({ receiptId: newestCreatedReceipt(before, next)?.id ?? null });
       onClose();
     } catch {
       lock.current = false;

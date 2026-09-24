@@ -53,3 +53,13 @@ export function clientWhatsAppHref(opts: {
   });
   return whatsappHref(opts.phone, text);
 }
+
+export function buildReceiptWhatsAppMessage(opts: { clientName?: string | null }): string {
+  const first = clientFirstName(opts.clientName);
+  if (!first) return "Salam Bhai payment receipt attached thanks";
+  return `Salam ${first} Bhai payment receipt attached thanks`;
+}
+
+export function receiptWhatsAppHref(opts: { phone?: string | null; clientName?: string | null }): string | null {
+  return whatsappHref(opts.phone, buildReceiptWhatsAppMessage({ clientName: opts.clientName }));
+}

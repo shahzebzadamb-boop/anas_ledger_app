@@ -8,6 +8,8 @@ import { clientWhatsAppHref } from "@/lib/reminders";
 import type { StayLedgerRow } from "@/lib/ledger";
 import { cn } from "@/lib/utils";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
+import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
+import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
 import { AddPaymentSheet } from "@/components/ledger/AddPaymentSheet";
 
 function MoneyRow({ label, value, accent }: { label: string; value: number; accent?: string }) {
@@ -37,6 +39,7 @@ export function StayLedgerCard({
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ kind: "stay" | "payment"; id: string } | null>(null);
   const [addPayment, setAddPayment] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const securityHeld = row.security
     .filter((item) => item.kind === "RECEIVED")
     .reduce((sum, item) => sum + item.amount, 0);
@@ -106,6 +109,11 @@ export function StayLedgerCard({
           </a>
         </div>
       ) : null}
+      {receiptId ? (
+        <div className="px-3.5 pb-3">
+          <PaymentReceiptNotice receiptId={receiptId} onDismiss={() => setReceiptId(null)} />
+        </div>
+      ) : null}
       {open ? (
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
           <p className="text-xs font-normal text-muted">
@@ -123,20 +131,22 @@ export function StayLedgerCard({
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment history</p>
               {row.payments.map((payment, index) => (
-                <button
-                  key={payment.id}
-                  type="button"
-                  className="block w-full text-left"
-                  onClick={() => setEdit({ kind: "payment", id: payment.id })}
-                >
-                  <p className="text-xs font-medium">Payment {index + 1}</p>
-                  <p className="text-sm">
-                    <span className="money">{formatPKR(payment.amount)}</span>
-                    <span className="text-muted"> · {payment.method}</span>
-                  </p>
-                  <p className="text-xs font-normal text-muted">Received by {payment.receivedBy}</p>
-                  <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
-                </button>
+                <div key={payment.id} className="space-y-1">
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => setEdit({ kind: "payment", id: payment.id })}
+                  >
+                    <p className="text-xs font-medium">Payment {index + 1}</p>
+                    <p className="text-sm">
+                      <span className="money">{formatPKR(payment.amount)}</span>
+                      <span className="text-muted"> · {payment.method}</span>
+                    </p>
+                    <p className="text-xs font-normal text-muted">Received by {payment.receivedBy}</p>
+                    <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
+                  </button>
+                  <PaymentReceiptLink paymentId={payment.id} />
+                </div>
               ))}
             </div>
           ) : (
@@ -200,6 +210,9 @@ export function StayLedgerCard({
           stayId={row.stayId}
           clientId={row.clientId}
           onClose={() => setAddPayment(false)}
+          onAdded={(info) => {
+            if (info?.receiptId) setReceiptId(info.receiptId);
+          }}
         />
       ) : null}
     </div>

@@ -4,6 +4,7 @@ import { reducer, reviveAction } from "@/lib/ledger-actions";
 import { getPool, toSqlDate } from "@/lib/server/db";
 import { loadLedgerState } from "@/lib/server/load-ledger";
 import { ensureMonthlyReports } from "@/lib/server/monthly-reports";
+import { syncReceipts } from "@/lib/server/receipts";
 import { isPlausibleLedgerAmount } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 import { createId } from "@/lib/utils";
@@ -35,9 +36,10 @@ export async function applyLedgerAction(action: Action): Promise<LedgerState> {
     const before = await loadLedgerState();
     const after = reducer(before, reviveAction(action));
     await persistDiff(connection, before, after);
+    const receipts = await syncReceipts(connection, before, after, action);
     const monthlyReports = await ensureMonthlyReports(connection, after);
     await connection.commit();
-    return { ...after, monthlyReports };
+    return { ...after, monthlyReports, receipts };
   } catch (error) {
     await connection.rollback();
     throw error;

@@ -23,6 +23,7 @@ import {
 } from "@/lib/parse-quick-entry";
 import type { CorrectionDraft } from "@/lib/parse-correction";
 import { useLedger } from "@/lib/store";
+import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
 
 const PLACEHOLDER = "Yahan likho kya hua...";
@@ -142,7 +143,7 @@ function CorrectionBody({ preview }: { preview: CorrectionPreview }) {
   );
 }
 
-export function QuickEntry({ onAdded }: { onAdded: () => void }) {
+export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => void }) {
   const { state, persist } = useLedger();
   const [text, setText] = useState("");
   const [parsed, setParsed] = useState<ParsedQuickEntry | null>(null);
@@ -229,7 +230,8 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
           : { ...next, targetId: chosen.id, targetKind: chosen.kind };
       setSaving(true);
       try {
-        await persist({ type: "APPLY_CORRECTION", parsed: draft });
+        const before = state;
+        const saved = await persist({ type: "APPLY_CORRECTION", parsed: draft });
         setText("");
         setParsed(null);
         setStayId(null);
@@ -237,7 +239,7 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
         setPhonePrompt("");
         setError(null);
         setSaveFailed(false);
-        onAdded();
+        onAdded({ receiptId: newestCreatedReceipt(before, saved)?.id ?? null });
       } catch {
         setSaveFailed(true);
         setError("Save failed. Your text is still here.");
@@ -256,14 +258,15 @@ export function QuickEntry({ onAdded }: { onAdded: () => void }) {
     }
     setSaving(true);
     try {
-      await persist({ type: "APPLY_QUICK_ENTRY", parsed: next });
+      const before = state;
+      const saved = await persist({ type: "APPLY_QUICK_ENTRY", parsed: next });
       setText("");
       setParsed(null);
       setStayId(null);
       setPhonePrompt("");
       setError(null);
       setSaveFailed(false);
-      onAdded();
+      onAdded({ receiptId: newestCreatedReceipt(before, saved)?.id ?? null });
     } catch {
       setSaveFailed(true);
       setError("Save failed. Your text is still here.");

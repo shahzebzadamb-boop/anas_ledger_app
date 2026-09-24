@@ -1,6 +1,6 @@
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
-import { karachiMonthRange, nightsBetween } from "../src/lib/dates";
+import { formatKarachiDateLong, karachiMonthRange, nightsBetween } from "../src/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
@@ -24,6 +24,7 @@ import {
 import {
   buildAnasPendingNotification,
   buildClientWhatsAppReminder,
+  buildReceiptWhatsAppMessage,
   clientFirstName,
   clientWhatsAppHref,
 } from "../src/lib/reminders";
@@ -31,6 +32,17 @@ import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 import { looksLikeCorrection } from "../src/lib/parse-correction";
 import { detectReceiverName } from "../src/lib/receivers";
+import {
+  buildReceiptView,
+  formatReceiptNumber,
+  newestCreatedReceipt,
+  paymentEligibleForReceipt,
+  planReceiptSync,
+  receiptPdfFileName,
+  RECEIPT_CONFIRMATION,
+  RECEIPT_THANK_YOU,
+} from "../src/lib/receipts";
+import { buildReceiptPdf } from "../src/lib/receipt-pdf";
 
 const known = [{ name: "Tufail Khan", phone: "923001234567" }];
 const cases: [string, string][] = [
@@ -985,6 +997,155 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
   console.error("CSV FAIL", csv.slice(0, 400));
 } else {
   console.log("OK monthly CSV export contains September totals");
+}
+
+{
+  const receiptState = emptyLedgerState();
+  const seeded = reducer(receiptState, {
+    type: "ADD_STAY",
+    payload: {
+      flat: "802-A",
+      clientName: "Tufail Khan",
+      phone: "03001234567",
+      checkIn: "2026-09-22T00:00:00+05:00",
+      checkOut: "2026-09-25T00:00:00+05:00",
+      nights: 3,
+      business: 60000,
+      received: 20000,
+      method: "CASH",
+      receivedByName: "Anas",
+    },
+  });
+  const firstPay = seeded.payments[0];
+  const withFirst: typeof seeded = {
+    ...seeded,
+    receipts: [
+      {
+        id: "rcpt_test_1",
+        receiptNumber: "CLL-20260922-0001",
+        paymentId: firstPay.id,
+        clientId: firstPay.clientId,
+        stayId: firstPay.stayId ?? seeded.stays[0].id,
+        flatId: firstPay.flatId ?? seeded.stays[0].flatId,
+        paymentDate: firstPay.receivedAt,
+        amountReceived: firstPay.amount,
+        status: "GENERATED",
+        createdAt: firstPay.createdAt,
+        updatedAt: firstPay.createdAt,
+        sharedAt: null,
+        shareAttemptedAt: null,
+        version: 1,
+        voidedAt: null,
+      },
+    ],
+  };
+  const afterSecond = reducer(withFirst, {
+    type: "RECORD_PAYMENT",
+    payload: {
+      clientId: withFirst.clients[0].id,
+      stayId: withFirst.stays[0].id,
+      amount: 20000,
+      method: "CASH",
+      receivedByName: "Khizer",
+      receivedAt: "2026-09-24T10:00:00+05:00",
+    },
+  });
+  const secondPay = afterSecond.payments.find((item) => item.id !== firstPay.id);
+  const createOps = planReceiptSync(withFirst, afterSecond, { type: "RECORD_PAYMENT" });
+  const secondReceipt = {
+    id: "rcpt_test_2",
+    receiptNumber: formatReceiptNumber("20260924", 1),
+    paymentId: secondPay?.id ?? "",
+    clientId: secondPay?.clientId ?? "",
+    stayId: secondPay?.stayId ?? "",
+    flatId: secondPay?.flatId ?? "",
+    paymentDate: secondPay?.receivedAt ?? "",
+    amountReceived: secondPay?.amount ?? 0,
+    status: "GENERATED" as const,
+    createdAt: secondPay?.createdAt ?? "",
+    updatedAt: secondPay?.createdAt ?? "",
+    sharedAt: null,
+    shareAttemptedAt: null,
+    version: 1,
+    voidedAt: null,
+  };
+  const withBoth = { ...afterSecond, receipts: [...withFirst.receipts, secondReceipt] };
+  const view = buildReceiptView(withBoth, secondReceipt);
+  const replay = planReceiptSync(withBoth, withBoth, { type: "RECORD_PAYMENT" });
+  const expenseOnly = reducer(withBoth, {
+    type: "ADD_EXPENSE",
+    payload: { amount: 5000, category: "CLEANING", description: "sofa", method: "CASH", flat: "802-A" },
+  });
+  const expenseOps = planReceiptSync(withBoth, expenseOnly, { type: "ADD_EXPENSE" });
+  const corrected = reducer(withBoth, {
+    type: "UPDATE_PAYMENT",
+    payload: { paymentId: secondPay?.id ?? "", amount: 18000, method: "EASYPAISA" },
+  });
+  const updateOps = planReceiptSync(withBoth, corrected, { type: "UPDATE_PAYMENT" });
+  const voided = reducer(corrected, {
+    type: "VOID_ENTRY",
+    payload: { entityType: "Payment", entityId: secondPay?.id ?? "" },
+  });
+  const voidOps = planReceiptSync(corrected, voided, { type: "VOID_ENTRY" });
+  const historical = planReceiptSync(
+    { ...seeded, receipts: [] },
+    { ...seeded, receipts: [] },
+    { type: "GENERATE_RECEIPT", paymentId: firstPay.id },
+  );
+  const pdf = view ? buildReceiptPdf(view) : null;
+  const utcShift = formatKarachiDateLong("2026-09-23T19:00:00.000Z");
+
+  if (formatReceiptNumber("20260924", 1) !== "CLL-20260924-0001") {
+    failed += 1;
+    console.error("RECEIPT NUMBER FAIL", formatReceiptNumber("20260924", 1));
+  } else if (createOps.length !== 1 || createOps[0]?.type !== "create" || createOps[0].paymentId !== secondPay?.id) {
+    failed += 1;
+    console.error("ONE RECEIPT PER PAYMENT FAIL", createOps, secondPay?.id);
+  } else if (replay.length !== 0) {
+    failed += 1;
+    console.error("IDEMPOTENT RECEIPT FAIL", replay);
+  } else if (expenseOps.length !== 0) {
+    failed += 1;
+    console.error("EXPENSE RECEIPT FAIL", expenseOps);
+  } else if (!view || view.amountReceived !== 20000 || view.totalReceivedToDate !== 40000 || view.remaining !== 20000 || view.receivedBy !== "Khizer") {
+    failed += 1;
+    console.error("RECEIPT TOTALS FAIL", view);
+  } else if (view.paidInFull) {
+    failed += 1;
+    console.error("PAID IN FULL SHOULD BE FALSE", view);
+  } else if (updateOps.length !== 1 || updateOps[0]?.type !== "update" || updateOps[0].receiptId !== "rcpt_test_2") {
+    failed += 1;
+    console.error("RECEIPT UPDATE FAIL", updateOps);
+  } else if (voidOps.length !== 1 || voidOps[0]?.type !== "void") {
+    failed += 1;
+    console.error("RECEIPT VOID FAIL", voidOps);
+  } else if (historical.length !== 1 || historical[0]?.type !== "create") {
+    failed += 1;
+    console.error("HISTORICAL GENERATE FAIL", historical);
+  } else if (utcShift !== "24 September 2026") {
+    failed += 1;
+    console.error("KARACHI DATE FAIL", utcShift);
+  } else if (buildReceiptWhatsAppMessage({ clientName: "Tufail Khan" }) !== "Salam Tufail Bhai payment receipt attached thanks") {
+    failed += 1;
+    console.error("RECEIPT WHATSAPP FAIL");
+  } else if (buildClientWhatsAppReminder({ clientName: "Tufail Khan", pendingAmount: 20000 }) === buildReceiptWhatsAppMessage({ clientName: "Tufail Khan" })) {
+    failed += 1;
+    console.error("WHATSAPP TEMPLATE MIX FAIL");
+  } else if (receiptPdfFileName("CLL-20260924-0001") !== "Capital-Lagoon-Receipt-CLL-20260924-0001.pdf") {
+    failed += 1;
+    console.error("PDF NAME FAIL");
+  } else if (!pdf || pdf.size < 800 || view.confirmation !== RECEIPT_CONFIRMATION || view.thankYou !== RECEIPT_THANK_YOU) {
+    failed += 1;
+    console.error("PDF TEXT FAIL", pdf?.size, view.confirmation);
+  } else if (newestCreatedReceipt(withFirst, withBoth)?.id !== "rcpt_test_2") {
+    failed += 1;
+    console.error("NEWEST RECEIPT FAIL");
+  } else if (!paymentEligibleForReceipt(secondPay!, afterSecond)) {
+    failed += 1;
+    console.error("ELIGIBLE FAIL");
+  } else {
+    console.log("OK payment receipts: one per payment, totals, correction, void, WhatsApp, PDF letterhead text");
+  }
 }
 
 if (failed) {

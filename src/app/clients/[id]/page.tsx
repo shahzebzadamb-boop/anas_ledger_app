@@ -19,6 +19,9 @@ import { formatPKR, methodLabel } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import { clientWhatsAppHref } from "@/lib/reminders";
 import { useLedger } from "@/lib/store";
+import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
+import { ReceiptShareButtons } from "@/components/receipts/ReceiptShareButtons";
+import { buildReceiptView } from "@/lib/receipts";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function ClientDetailPage() {
@@ -94,6 +97,43 @@ export default function ClientDetailPage() {
         Last stay {profile.lastStay ? formatDate(profile.lastStay) : "—"}
       </p>
 
+      <section className="space-y-2">
+        <h2 className="section-title">Receipts</h2>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+          {state.receipts.filter((item) => item.clientId === client.id).length === 0 ? (
+            <p className="px-3.5 py-3 text-sm font-normal text-muted">No payment receipts yet.</p>
+          ) : (
+            state.receipts
+              .filter((item) => item.clientId === client.id)
+              .sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1))
+              .map((receipt) => {
+                const view = buildReceiptView(state, receipt);
+                const payment = state.payments.find((item) => item.id === receipt.paymentId);
+                return (
+                  <div key={receipt.id} className="space-y-1 border-b border-border px-3.5 py-2.5 last:border-b-0">
+                    <p className="text-xs font-normal text-muted">{formatDate(receipt.paymentDate)}</p>
+                    <p className="text-sm font-medium">{receipt.receiptNumber}</p>
+                    <p className="text-sm">
+                      <span className="money">{formatPKR(receipt.amountReceived)}</span>
+                      <span className="text-muted">
+                        {" "}
+                        · {payment ? methodLabel(payment.method) : ""}
+                        {receipt.status === "VOID" ? " · VOID" : ""}
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-4">
+                      <Link href={`/receipts/${receipt.id}`} className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
+                        View
+                      </Link>
+                      {view ? <ReceiptShareButtons view={view} phone={client.phone} compact /> : null}
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </div>
+      </section>
+
       {profile.stays.map((stay) => (
         <button
           key={stay.id}
@@ -138,6 +178,7 @@ export default function ClientDetailPage() {
               {item.flatId ? (
                 <p className="mt-0.5 text-xs font-normal text-muted">Flat {flatName(state, item.flatId)}</p>
               ) : null}
+              <PaymentReceiptLink paymentId={item.id} />
             </button>
           ))}
           {state.security.filter((item) => item.clientId === client.id && !item.voided).map((item) => (

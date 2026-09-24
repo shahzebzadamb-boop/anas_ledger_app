@@ -8,6 +8,7 @@ import { dateInputToISO, formatStayDates, karachiDateInput } from "@/lib/dates";
 import { paymentStayChoices, stayRemaining, uniquePaymentStayId } from "@/lib/ledger";
 import { formatPKR, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
+import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/types";
 
 export function AddPaymentSheet({
@@ -19,7 +20,7 @@ export function AddPaymentSheet({
   stayId?: string;
   clientId?: string;
   onClose: () => void;
-  onAdded?: () => void;
+  onAdded?: (info?: AddedReceiptInfo) => void;
 }) {
   const { persist, state } = useLedger();
   const lockedStay = stayId ? state.stays.find((item) => item.id === stayId) : null;
@@ -80,7 +81,8 @@ export function AddPaymentSheet({
     setSaving(true);
     (document.activeElement as HTMLElement | null)?.blur?.();
     try {
-      await persist({
+      const before = state;
+      const next = await persist({
         type: "RECORD_PAYMENT",
         payload: {
           clientId: selectedClientId,
@@ -93,7 +95,7 @@ export function AddPaymentSheet({
           notes: notes.trim() || null,
         },
       });
-      onAdded?.();
+      onAdded?.({ receiptId: newestCreatedReceipt(before, next)?.id ?? null });
       onClose();
     } catch {
       setError("Save failed.");

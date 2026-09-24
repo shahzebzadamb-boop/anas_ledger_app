@@ -24,6 +24,7 @@ import { ledgerHref, parseLedgerPreset, parseLedgerView, type LedgerView } from 
 import { formatPKR } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
 import type { DateFilterPreset, DateRange } from "@/types";
 
 const tabs: { view: LedgerView; label: string }[] = [
@@ -46,6 +47,7 @@ export function LedgerPage() {
   }));
   const [sheet, setSheet] = useState<"stay" | "payment" | "expense" | null>(null);
   const [toast, setToast] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
 
   const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
   const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
@@ -73,7 +75,13 @@ export function LedgerPage() {
     );
   }
 
-  function added() {
+  function added(info?: { receiptId?: string | null }) {
+    if (info?.receiptId) {
+      setReceiptId(info.receiptId);
+      setToast(false);
+      return;
+    }
+    setReceiptId(null);
     setToast(true);
     window.setTimeout(() => setToast(false), 1600);
   }
@@ -86,7 +94,11 @@ export function LedgerPage() {
 
   return (
     <div className="space-y-3.5">
-      {toast ? <p className="toast-ok">✓ Added</p> : null}
+      {receiptId ? (
+        <PaymentReceiptNotice receiptId={receiptId} onDismiss={() => setReceiptId(null)} />
+      ) : toast ? (
+        <p className="toast-ok">✓ Added</p>
+      ) : null}
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="min-h-11 inline-flex items-center text-sm font-medium text-secondary">
           ← Back

@@ -124,7 +124,10 @@ export type Action =
         kind?: "RECEIVED" | "ADJUSTED_TO_RENT";
       };
     }
-  | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } };
+  | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
+  | { type: "GENERATE_RECEIPT"; paymentId: string }
+  | { type: "MARK_RECEIPT_SHARE_ATTEMPTED"; receiptId: string }
+  | { type: "MARK_RECEIPT_SENT"; receiptId: string };
 
 function asDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
@@ -608,6 +611,7 @@ function normalizeState(state: LedgerState): LedgerState {
     discounts: (state.discounts ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     withdrawals: (state.withdrawals ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     monthlyReports: state.monthlyReports ?? [],
+    receipts: state.receipts ?? [],
     reviews: state.reviews.map((item) => ({
       ...item,
       month: item.month ?? item.sourceSheet,
@@ -925,6 +929,10 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         },
         "MANUAL_EDIT",
       );
+    case "GENERATE_RECEIPT":
+    case "MARK_RECEIPT_SHARE_ATTEMPTED":
+    case "MARK_RECEIPT_SENT":
+      return state;
     case "APPLY_QUICK_ENTRY": {
       const parsed = action.parsed;
       if (parsed.type === "correction") {

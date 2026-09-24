@@ -187,6 +187,26 @@ export type ReminderSilence = {
   cycleDate: string;
 };
 
+export type ReceiptStatus = "GENERATED" | "UPDATED" | "VOID";
+
+export type Receipt = {
+  id: string;
+  receiptNumber: string;
+  paymentId: string;
+  clientId: string;
+  stayId: string;
+  flatId: string;
+  paymentDate: string;
+  amountReceived: number;
+  status: ReceiptStatus;
+  createdAt: string;
+  updatedAt: string;
+  sharedAt: string | null;
+  shareAttemptedAt: string | null;
+  version: number;
+  voidedAt: string | null;
+};
+
 export type MonthlyReportStatus = "FINAL" | "UPDATED" | "LIVE";
 
 export type MonthlyReportRecord = {
@@ -230,6 +250,7 @@ export type LedgerState = {
   reminderSilences: ReminderSilence[];
   nightSummaryDates: string[];
   monthlyReports: MonthlyReportRecord[];
+  receipts: Receipt[];
 };
 
 export type DashboardTotals = {

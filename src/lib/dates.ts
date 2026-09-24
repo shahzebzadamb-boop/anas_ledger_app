@@ -135,12 +135,39 @@ export function inRange(isoDate: string, range: DateRange): boolean {
   return date >= range.from && date <= range.to;
 }
 
+export function formatKarachiDateLong(isoDate: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: KARACHI,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(isoDate));
+}
+
+export function formatKarachiDateMedium(isoDate: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: KARACHI,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(isoDate));
+}
+
+export function karachiYmdKey(isoDate: string | Date): string {
+  const { year, month, day } = karachiYmd(typeof isoDate === "string" ? new Date(isoDate) : isoDate);
+  return `${year}${pad2(month)}${pad2(day)}`;
+}
+
 export function formatDate(isoDate: string): string {
-  return format(new Date(isoDate), "d MMM yyyy");
+  return formatKarachiDateMedium(isoDate);
 }
 
 export function formatDateShort(isoDate: string): string {
-  return format(new Date(isoDate), "d MMM");
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: KARACHI,
+    day: "numeric",
+    month: "short",
+  }).format(new Date(isoDate));
 }
 
 export function formatStayDates(checkIn: string, checkOut: string): string {

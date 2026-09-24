@@ -24,5 +24,6 @@ export function emptyLedgerState(): LedgerState {
     reminderSilences: [],
     nightSummaryDates: [],
     monthlyReports: [],
+    receipts: [],
   };
 }

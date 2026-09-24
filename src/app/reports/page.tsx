@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { startOfMonth } from "date-fns";
 import { DateFilter } from "@/components/dashboard/DateFilter";
@@ -80,6 +81,9 @@ export default function ReportsPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Reports" subtitle="Monthly reports stay available. Home stays on the current month." />
+      <Link href="/reports/receipts" className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
+        Receipts
+      </Link>
       <MonthlyReports state={state} />
       <DateFilter
         flats={state.flats}

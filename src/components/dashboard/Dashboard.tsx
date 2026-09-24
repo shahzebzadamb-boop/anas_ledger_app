@@ -14,6 +14,7 @@ import { periodLabel, rangeForPreset } from "@/lib/dates";
 import { dashboardTotals, needsAttention, stayLedgerRows } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
+import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
 import type { DateFilterPreset, DateRange } from "@/types";
 
 export function Dashboard() {
@@ -25,6 +26,7 @@ export function Dashboard() {
     to: new Date(),
   });
   const [toast, setToast] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
 
   const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
   const attention = useMemo(() => needsAttention(state, selectedFlat), [state, selectedFlat]);
@@ -34,7 +36,11 @@ export function Dashboard() {
 
   return (
     <div className="space-y-3.5">
-      {toast ? <p className="toast-ok">✓ Added</p> : null}
+      {receiptId ? (
+        <PaymentReceiptNotice receiptId={receiptId} onDismiss={() => setReceiptId(null)} />
+      ) : toast ? (
+        <p className="toast-ok">✓ Added</p>
+      ) : null}
       <PageHeader
         title="ANAS LEDGER"
         subtitle="Fast mobile cash notebook"
@@ -87,7 +93,13 @@ export function Dashboard() {
         onCustom={setCustom}
       />
       <QuickEntry
-        onAdded={() => {
+        onAdded={(info) => {
+          if (info?.receiptId) {
+            setReceiptId(info.receiptId);
+            setToast(false);
+            return;
+          }
+          setReceiptId(null);
           setToast(true);
           window.setTimeout(() => setToast(false), 1600);
         }}

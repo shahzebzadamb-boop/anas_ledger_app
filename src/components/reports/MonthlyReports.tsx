@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,6 +13,7 @@ import {
   type MonthReportComputed,
 } from "@/lib/month-accounting";
 import type { LedgerState, MonthlyReportRecord } from "@/types";
+import { countReceiptsGenerated } from "@/lib/receipts";
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -167,6 +169,10 @@ function MonthCard({
       <Row label="Received" value={formatPKR(report.received)} accent="text-primary" />
       <Row label="Expenses" value={formatPKR(report.expenses)} />
       <Row label="Closing pending" value={formatPKR(report.closingOutstanding)} accent="text-warning" />
+      <Row label="Receipts generated" value={String(countReceiptsGenerated(state, year, month))} />
+      <Link href={`/reports/receipts?year=${year}&month=${month}`} className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
+        View Receipts
+      </Link>
       <div className="grid grid-cols-3 gap-2">
         <Button onClick={onToggle} disabled={busy}>
           Preview
@@ -178,12 +184,34 @@ function MonthCard({
           Download
         </Button>
       </div>
-      {open ? <InternalPreview report={report} onExport={() => downloadBlob(new Blob([buildMonthCsv(report)], { type: "text/csv" }), `anas-ledger-${report.year}-${String(report.month).padStart(2, "0")}.csv`)} /> : null}
+      {open ? (
+        <InternalPreview
+          report={report}
+          receiptsGenerated={countReceiptsGenerated(state, year, month)}
+          receiptsHref={`/reports/receipts?year=${year}&month=${month}`}
+          onExport={() =>
+            downloadBlob(
+              new Blob([buildMonthCsv(report)], { type: "text/csv" }),
+              `anas-ledger-${report.year}-${String(report.month).padStart(2, "0")}.csv`,
+            )
+          }
+        />
+      ) : null}
     </Card>
   );
 }
 
-function InternalPreview({ report, onExport }: { report: MonthReportComputed; onExport: () => void }) {
+function InternalPreview({
+  report,
+  receiptsGenerated,
+  receiptsHref,
+  onExport,
+}: {
+  report: MonthReportComputed;
+  receiptsGenerated: number;
+  receiptsHref: string;
+  onExport: () => void;
+}) {
   const groups = useMemo(() => {
     const map = new Map<string, typeof report.stays>();
     for (const stay of report.stays) {
@@ -209,6 +237,10 @@ function InternalPreview({ report, onExport }: { report: MonthReportComputed; on
       <Row label="Stays" value={String(report.totalStays)} />
       <Row label="Occupied nights" value={String(report.totalNights)} />
       <Row label="Average stay" value={`${report.averageStayLength} nights`} />
+      <Row label="Receipts generated" value={String(receiptsGenerated)} />
+      <Link href={receiptsHref} className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
+        View Receipts
+      </Link>
 
       <p className="section-title">Received by</p>
       {report.receivers.map((item) => (

@@ -8,6 +8,7 @@ import { dateInputToISO, formatDateShort, karachiDateInput, nightsBetween } from
 import { formatPKR, parseFormAmount } from "@/lib/money";
 import { displayPhone, normalizePhone } from "@/lib/phone";
 import { useLedger } from "@/lib/store";
+import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { FLAT_NAMES, PAYMENT_METHODS, type PaymentMethod } from "@/types";
 
 export function AddStaySheet({
@@ -17,7 +18,7 @@ export function AddStaySheet({
 }: {
   defaultFlat?: string;
   onClose: () => void;
-  onAdded?: () => void;
+  onAdded?: (info?: AddedReceiptInfo) => void;
 }) {
   const { persist, state } = useLedger();
   const today = karachiDateInput();
@@ -87,7 +88,8 @@ export function AddStaySheet({
     setSaving(true);
     (document.activeElement as HTMLElement | null)?.blur?.();
     try {
-      await persist({
+      const before = state;
+      const next = await persist({
         type: "ADD_STAY",
         payload: {
           flat,
@@ -105,7 +107,7 @@ export function AddStaySheet({
           notes: notes.trim() || null,
         },
       });
-      onAdded?.();
+      onAdded?.({ receiptId: newestCreatedReceipt(before, next)?.id ?? null });
       onClose();
     } catch {
       setError("Save failed.");

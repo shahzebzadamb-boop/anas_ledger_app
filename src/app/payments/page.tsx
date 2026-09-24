@@ -8,6 +8,7 @@ import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { DEFAULT_RECEIVER_NAME, KHIZER_NAME } from "@/lib/receivers";
 import { cn } from "@/lib/utils";
+import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 
 export default function PaymentsPage() {
@@ -94,6 +95,7 @@ export default function PaymentsPage() {
                   {payment.flatId ? ` · Flat ${flatName(state, payment.flatId)}` : ""}
                 </p>
                 <p className="mt-0.5 text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
+                <PaymentReceiptLink paymentId={payment.id} />
               </div>
               <p className="money shrink-0 text-sm">{formatPKR(payment.amount)}</p>
             </div>

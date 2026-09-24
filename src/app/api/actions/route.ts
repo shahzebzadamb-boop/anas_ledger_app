@@ -22,6 +22,9 @@ const WRITE_TYPES = new Set<Action["type"]>([
   "UPDATE_EXPENSE",
   "UPDATE_SECURITY",
   "VOID_ENTRY",
+  "GENERATE_RECEIPT",
+  "MARK_RECEIPT_SHARE_ATTEMPTED",
+  "MARK_RECEIPT_SENT",
 ]);
 
 export async function POST(request: Request) {
