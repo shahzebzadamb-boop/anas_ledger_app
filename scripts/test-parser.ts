@@ -1130,8 +1130,6 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     receiver: "all",
     query: "",
   });
-  const longDateWidth = "30 September 2026".length * 9.5 * 0.48;
-
   if (formatReceiptNumber("20260924", 1) !== "CLL-20260924-0001") {
     failed += 1;
     console.error("RECEIPT NUMBER FAIL", formatReceiptNumber("20260924", 1));
@@ -1181,8 +1179,7 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     bounds.top >= bounds.date.y ||
     bounds.bottom <= 140 ||
     septReceipts.length !== 1 ||
-    augustReceipts.length !== 0 ||
-    longDateWidth > 120
+    augustReceipts.length !== 0
   ) {
     failed += 1;
     console.error("PDF LETTERHEAD FAIL", pdf?.size, overflowPdf?.size, bounds, view.confirmation);

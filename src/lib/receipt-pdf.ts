@@ -16,13 +16,7 @@ function fromLetterhead(px: number, py: number): { x: number; y: number } {
 const CONTENT_LEFT = fromLetterhead(52, 0).x;
 const CONTENT_RIGHT = fromLetterhead(740, 0).x;
 const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
-const DATE_POS = fromLetterhead(628, 296);
-const DATE_COVER = {
-  x: fromLetterhead(624, 0).x,
-  y: fromLetterhead(0, 306).y,
-  w: fromLetterhead(784, 0).x - fromLetterhead(624, 0).x,
-  h: fromLetterhead(0, 280).y - fromLetterhead(0, 306).y,
-};
+const DATE_LINE = fromLetterhead(0, 296);
 const BODY_TOP = fromLetterhead(0, 338).y;
 const BODY_BOTTOM = fromLetterhead(0, 908).y;
 
@@ -144,7 +138,7 @@ function addRow(ops: DrawOp[], y: number, label: string, value: string, emphasiz
 }
 
 export function letterheadContentBounds() {
-  return { left: CONTENT_LEFT, right: CONTENT_RIGHT, top: BODY_TOP, bottom: BODY_BOTTOM, date: DATE_POS };
+  return { left: CONTENT_LEFT, right: CONTENT_RIGHT, top: BODY_TOP, bottom: BODY_BOTTOM, date: DATE_LINE };
 }
 
 export function buildReceiptPdf(view: ReceiptView, letterheadJpeg?: Uint8Array | null): Blob {
@@ -161,9 +155,6 @@ export function buildReceiptPdf(view: ReceiptView, letterheadJpeg?: Uint8Array |
       height: IMG_H,
     });
   }
-
-  ops.push({ kind: "rect", x: DATE_COVER.x, y: DATE_COVER.y, w: DATE_COVER.w, h: DATE_COVER.h });
-  ops.push({ kind: "text", x: DATE_POS.x, y: DATE_POS.y, size: 9.5, font: "F1", text: view.dateLabel });
 
   let cursor = BODY_TOP;
   addCentered(ops, cursor, 13, "F2", "PAYMENT RECEIPT");
