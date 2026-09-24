@@ -16,12 +16,12 @@ function fromLetterhead(px: number, py: number): { x: number; y: number } {
 const CONTENT_LEFT = fromLetterhead(52, 0).x;
 const CONTENT_RIGHT = fromLetterhead(740, 0).x;
 const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
-const DATE_POS = fromLetterhead(632, 296);
+const DATE_POS = fromLetterhead(628, 296);
 const DATE_COVER = {
   x: fromLetterhead(624, 0).x,
-  y: fromLetterhead(0, 304).y,
-  w: fromLetterhead(770, 0).x - fromLetterhead(624, 0).x,
-  h: fromLetterhead(0, 286).y - fromLetterhead(0, 304).y,
+  y: fromLetterhead(0, 306).y,
+  w: fromLetterhead(784, 0).x - fromLetterhead(624, 0).x,
+  h: fromLetterhead(0, 280).y - fromLetterhead(0, 306).y,
 };
 const BODY_TOP = fromLetterhead(0, 338).y;
 const BODY_BOTTOM = fromLetterhead(0, 908).y;
@@ -163,7 +163,7 @@ export function buildReceiptPdf(view: ReceiptView, letterheadJpeg?: Uint8Array |
   }
 
   ops.push({ kind: "rect", x: DATE_COVER.x, y: DATE_COVER.y, w: DATE_COVER.w, h: DATE_COVER.h });
-  ops.push({ kind: "text", x: DATE_POS.x, y: DATE_POS.y, size: 10, font: "F1", text: view.dateLabel });
+  ops.push({ kind: "text", x: DATE_POS.x, y: DATE_POS.y, size: 9.5, font: "F1", text: view.dateLabel });
 
   let cursor = BODY_TOP;
   addCentered(ops, cursor, 13, "F2", "PAYMENT RECEIPT");

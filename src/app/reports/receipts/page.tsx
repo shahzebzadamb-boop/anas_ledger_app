@@ -14,7 +14,7 @@ import { FLAT_NAMES, type DateRange } from "@/types";
 import { ReceiptShareButtons } from "@/components/receipts/ReceiptShareButtons";
 
 function ReportsReceiptsInner() {
-  const { state } = useLedger();
+  const { state, ready } = useLedger();
   const search = useSearchParams();
   const yearParam = Number(search.get("year") ?? "");
   const monthParam = Number(search.get("month") ?? "");
@@ -43,6 +43,10 @@ function ReportsReceiptsInner() {
       }),
     [custom, flat, preset, query, receiver, state],
   );
+
+  if (!ready) {
+    return <p className="text-sm font-normal text-muted">Loading receipts…</p>;
+  }
 
   return (
     <div className="space-y-4">

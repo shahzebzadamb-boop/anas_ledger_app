@@ -1,4 +1,4 @@
-import { formatKarachiDateLong, karachiMonthRange, karachiYmd, karachiYmdKey } from "@/lib/dates";
+import { formatKarachiDateLong, inKarachiRange, karachiMonthRange, karachiYmd, karachiYmdKey } from "@/lib/dates";
 import { flatName, isRentPayment, receiverName, stayCollectible, stayPayments, stayRemaining } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import type { DateRange, LedgerState, Payment, Receipt, ReceiptStatus } from "@/types";
@@ -195,8 +195,7 @@ export function receiptsInRange(state: LedgerState, range: DateRange, flat = "al
       const name = flatName(state, item.flatId);
       if (name !== flat) return false;
     }
-    const date = new Date(item.paymentDate);
-    return date >= range.from && date <= range.to;
+    return inKarachiRange(item.paymentDate, range);
   });
 }
 
@@ -219,8 +218,7 @@ export function filterReceiptRows(state: LedgerState, filters: ReceiptListFilter
   const query = filters.query.trim().toLowerCase();
   return (state.receipts ?? [])
     .filter((item) => {
-      const date = new Date(item.paymentDate);
-      if (date < range.from || date > range.to) return false;
+      if (!inKarachiRange(item.paymentDate, range)) return false;
       if (filters.flat !== "all" && flatName(state, item.flatId) !== filters.flat) return false;
       const payment = state.payments.find((row) => row.id === item.paymentId);
       const receivedBy = receiverName(state, payment?.receivedById);

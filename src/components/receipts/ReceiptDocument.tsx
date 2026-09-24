@@ -52,14 +52,17 @@ export function ReceiptDocument({ view }: { view: ReceiptView }) {
       <div
         style={{
           position: "absolute",
-          top: "74.5mm",
-          left: "167mm",
-          right: "16mm",
+          top: "74.2mm",
+          left: "166.5mm",
+          right: "6.5mm",
           background: "#ffffff",
-          fontSize: "10.5pt",
-          lineHeight: 1.2,
+          fontSize: "9.5pt",
+          lineHeight: 1,
+          letterSpacing: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
           textAlign: "left",
-          padding: "0 0 1mm",
+          padding: "0 0 1.5mm",
         }}
       >
         {view.dateLabel}

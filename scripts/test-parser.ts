@@ -36,6 +36,7 @@ import { looksLikeCorrection } from "../src/lib/parse-correction";
 import { detectReceiverName } from "../src/lib/receivers";
 import {
   buildReceiptView,
+  filterReceiptRows,
   formatReceiptNumber,
   newestCreatedReceipt,
   paymentEligibleForReceipt,
@@ -1109,6 +1110,27 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     : null;
   const overflowPdf = longView ? buildReceiptPdf(longView, letterhead) : null;
   const bounds = letterheadContentBounds();
+  const karachiMidnight = {
+    ...withBoth,
+    receipts: [{ ...secondReceipt, paymentDate: "2026-08-31T19:00:00.000Z" }],
+  };
+  const septReceipts = filterReceiptRows(karachiMidnight, {
+    preset: "month",
+    year: 2026,
+    month: 9,
+    flat: "all",
+    receiver: "all",
+    query: "",
+  });
+  const augustReceipts = filterReceiptRows(karachiMidnight, {
+    preset: "previous",
+    year: 2026,
+    month: 8,
+    flat: "all",
+    receiver: "all",
+    query: "",
+  });
+  const longDateWidth = "30 September 2026".length * 9.5 * 0.48;
 
   if (formatReceiptNumber("20260924", 1) !== "CLL-20260924-0001") {
     failed += 1;
@@ -1157,7 +1179,10 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     view.confirmation !== RECEIPT_CONFIRMATION ||
     view.thankYou !== RECEIPT_THANK_YOU ||
     bounds.top >= bounds.date.y ||
-    bounds.bottom <= 140
+    bounds.bottom <= 140 ||
+    septReceipts.length !== 1 ||
+    augustReceipts.length !== 0 ||
+    longDateWidth > 120
   ) {
     failed += 1;
     console.error("PDF LETTERHEAD FAIL", pdf?.size, overflowPdf?.size, bounds, view.confirmation);

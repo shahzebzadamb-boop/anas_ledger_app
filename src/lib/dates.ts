@@ -135,6 +135,16 @@ export function inRange(isoDate: string, range: DateRange): boolean {
   return date >= range.from && date <= range.to;
 }
 
+function karachiDateKey(value: string | Date): number {
+  const { year, month, day } = karachiYmd(typeof value === "string" ? new Date(value) : value);
+  return year * 10000 + month * 100 + day;
+}
+
+export function inKarachiRange(isoDate: string, range: DateRange): boolean {
+  const key = karachiDateKey(isoDate);
+  return key >= karachiDateKey(range.from) && key <= karachiDateKey(range.to);
+}
+
 export function formatKarachiDateLong(isoDate: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: KARACHI,
