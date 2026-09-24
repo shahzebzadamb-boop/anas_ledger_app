@@ -57,11 +57,10 @@ export default function ReceiptPreviewPage() {
       ) : (
         <p className="text-xs font-normal text-muted">Marked as sent</p>
       )}
-      <div className="overflow-hidden rounded-2xl border border-border bg-white">
-        <div className="origin-top-left" style={{ width: "210mm", transform: "scale(0.48)", transformOrigin: "top left" }}>
+      <div className="receipt-preview-frame overflow-hidden rounded-2xl border border-border bg-white">
+        <div className="receipt-preview-page">
           <ReceiptDocument view={view} />
         </div>
-        <div style={{ height: "calc(297mm * 0.48)" }} />
       </div>
     </div>
   );

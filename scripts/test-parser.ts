@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { join } from "path";
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
 import { formatKarachiDateLong, karachiMonthRange, nightsBetween } from "../src/lib/dates";
@@ -42,7 +44,7 @@ import {
   RECEIPT_CONFIRMATION,
   RECEIPT_THANK_YOU,
 } from "../src/lib/receipts";
-import { buildReceiptPdf } from "../src/lib/receipt-pdf";
+import { buildReceiptPdf, letterheadContentBounds } from "../src/lib/receipt-pdf";
 
 const known = [{ name: "Tufail Khan", phone: "923001234567" }];
 const cases: [string, string][] = [
@@ -1092,8 +1094,21 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     { ...seeded, receipts: [] },
     { type: "GENERATE_RECEIPT", paymentId: firstPay.id },
   );
-  const pdf = view ? buildReceiptPdf(view) : null;
+  const letterhead = new Uint8Array(readFileSync(join(process.cwd(), "public/receipts/capital-lagoon-letterhead.jpg")));
+  const pdf = view ? buildReceiptPdf(view, letterhead) : null;
   const utcShift = formatKarachiDateLong("2026-09-23T19:00:00.000Z");
+  const longView = view
+    ? {
+        ...view,
+        clientName: "Muhammad Abdullah Khan International Traveller",
+        totalStayAmount: 1250000,
+        amountReceived: 9999999,
+        totalReceivedToDate: 9999999,
+        remaining: 250000,
+      }
+    : null;
+  const overflowPdf = longView ? buildReceiptPdf(longView, letterhead) : null;
+  const bounds = letterheadContentBounds();
 
   if (formatReceiptNumber("20260924", 1) !== "CLL-20260924-0001") {
     failed += 1;
@@ -1134,9 +1149,18 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
   } else if (receiptPdfFileName("CLL-20260924-0001") !== "Capital-Lagoon-Receipt-CLL-20260924-0001.pdf") {
     failed += 1;
     console.error("PDF NAME FAIL");
-  } else if (!pdf || pdf.size < 800 || view.confirmation !== RECEIPT_CONFIRMATION || view.thankYou !== RECEIPT_THANK_YOU) {
+  } else if (
+    !pdf ||
+    pdf.size < 40000 ||
+    !overflowPdf ||
+    overflowPdf.size < 40000 ||
+    view.confirmation !== RECEIPT_CONFIRMATION ||
+    view.thankYou !== RECEIPT_THANK_YOU ||
+    bounds.top >= bounds.date.y ||
+    bounds.bottom <= 140
+  ) {
     failed += 1;
-    console.error("PDF TEXT FAIL", pdf?.size, view.confirmation);
+    console.error("PDF LETTERHEAD FAIL", pdf?.size, overflowPdf?.size, bounds, view.confirmation);
   } else if (newestCreatedReceipt(withFirst, withBoth)?.id !== "rcpt_test_2") {
     failed += 1;
     console.error("NEWEST RECEIPT FAIL");

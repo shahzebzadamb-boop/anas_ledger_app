@@ -1,19 +1,30 @@
-import {
-  RECEIPT_CONFIRMATION,
-  RECEIPT_PROPERTY_NAME,
-  RECEIPT_SIGNATORY_NAME,
-  RECEIPT_SIGNATORY_TITLE,
-  RECEIPT_THANK_YOU,
-  receiptPdfFileName,
-  type ReceiptView,
-} from "@/lib/receipts";
+import { LETTERHEAD_SRC, RECEIPT_CONFIRMATION, RECEIPT_THANK_YOU, receiptPdfFileName, type ReceiptView } from "@/lib/receipts";
 import { formatPKR } from "@/lib/money";
 
+const LETTERHEAD_PX_W = 792;
+const LETTERHEAD_PX_H = 1024;
 const PAGE_W = 595;
 const PAGE_H = 842;
-const MARGIN = 56;
-const HEADER_BOTTOM = 668;
-const FOOTER_TOP = 96;
+const SCALE = PAGE_W / LETTERHEAD_PX_W;
+const IMG_H = LETTERHEAD_PX_H * SCALE;
+
+/** Map letterhead pixels (origin top-left) to PDF points (origin bottom-left), image fitted to A4 width at top. */
+function fromLetterhead(px: number, py: number): { x: number; y: number } {
+  return { x: px * SCALE, y: PAGE_H - py * SCALE };
+}
+
+const CONTENT_LEFT = fromLetterhead(52, 0).x;
+const CONTENT_RIGHT = fromLetterhead(740, 0).x;
+const CONTENT_WIDTH = CONTENT_RIGHT - CONTENT_LEFT;
+const DATE_POS = fromLetterhead(632, 296);
+const DATE_COVER = {
+  x: fromLetterhead(624, 0).x,
+  y: fromLetterhead(0, 304).y,
+  w: fromLetterhead(770, 0).x - fromLetterhead(624, 0).x,
+  h: fromLetterhead(0, 286).y - fromLetterhead(0, 304).y,
+};
+const BODY_TOP = fromLetterhead(0, 338).y;
+const BODY_BOTTOM = fromLetterhead(0, 908).y;
 
 function escapePdf(text: string) {
   return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
@@ -82,10 +93,11 @@ function jpegSize(bytes: Uint8Array): { width: number; height: number } | null {
   return null;
 }
 
-type PdfFont = "F1" | "F2" | "F3" | "F4";
+type PdfFont = "F1" | "F2";
 type DrawOp =
   | { kind: "text"; x: number; y: number; size: number; font: PdfFont; text: string }
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number; width: number }
+  | { kind: "rect"; x: number; y: number; w: number; h: number }
   | { kind: "image"; x: number; y: number; width: number; height: number };
 
 function opStream(ops: DrawOp[]): string {
@@ -95,7 +107,10 @@ function opStream(ops: DrawOp[]): string {
         return `BT /${op.font} ${op.size} Tf ${op.x.toFixed(2)} ${op.y.toFixed(2)} Td (${escapePdf(ascii(op.text))}) Tj ET`;
       }
       if (op.kind === "line") {
-        return `${op.width} w ${op.x1.toFixed(2)} ${op.y1.toFixed(2)} m ${op.x2.toFixed(2)} ${op.y2.toFixed(2)} l S`;
+        return `0 0 0 RG ${op.width} w ${op.x1.toFixed(2)} ${op.y1.toFixed(2)} m ${op.x2.toFixed(2)} ${op.y2.toFixed(2)} l S`;
+      }
+      if (op.kind === "rect") {
+        return `1 1 1 rg ${op.x.toFixed(2)} ${op.y.toFixed(2)} ${op.w.toFixed(2)} ${op.h.toFixed(2)} re f 0 0 0 rg`;
       }
       return `q ${op.width.toFixed(2)} 0 0 ${op.height.toFixed(2)} ${op.x.toFixed(2)} ${op.y.toFixed(2)} cm /Im1 Do Q`;
     })
@@ -103,116 +118,101 @@ function opStream(ops: DrawOp[]): string {
 }
 
 function addCentered(ops: DrawOp[], y: number, size: number, font: PdfFont, text: string) {
-  ops.push({ kind: "text", x: (PAGE_W - textWidth(text, size, font === "F2" || font === "F4")) / 2, y, size, font, text });
+  const x = CONTENT_LEFT + (CONTENT_WIDTH - textWidth(text, size, font === "F2")) / 2;
+  ops.push({ kind: "text", x, y, size, font, text });
 }
 
-function addRow(ops: DrawOp[], y: number, label: string, value: string, emphasize = false) {
-  ops.push({ kind: "text", x: MARGIN, y, size: 10, font: "F1", text: label });
-  const font = emphasize ? "F2" : "F1";
+function addRow(ops: DrawOp[], y: number, label: string, value: string, emphasize = false): number {
+  const font: PdfFont = emphasize ? "F2" : "F1";
   const size = emphasize ? 11 : 10;
-  ops.push({
-    kind: "text",
-    x: PAGE_W - MARGIN - textWidth(value, size, emphasize),
-    y,
-    size,
-    font,
-    text: value,
+  const labelW = textWidth(label, 10, false);
+  const gap = 16;
+  const valueMax = Math.max(80, CONTENT_WIDTH - labelW - gap);
+  const lines = wrapText(value, size, valueMax, emphasize);
+  ops.push({ kind: "text", x: CONTENT_LEFT, y, size: 10, font: "F1", text: label });
+  lines.forEach((line, index) => {
+    ops.push({
+      kind: "text",
+      x: CONTENT_RIGHT - textWidth(line, size, emphasize),
+      y: y - index * (size + 3),
+      size,
+      font,
+      text: line,
+    });
   });
+  return y - (lines.length - 1) * (size + 3);
 }
 
-export function buildReceiptPdf(view: ReceiptView, logoJpeg?: Uint8Array | null): Blob {
+export function letterheadContentBounds() {
+  return { left: CONTENT_LEFT, right: CONTENT_RIGHT, top: BODY_TOP, bottom: BODY_BOTTOM, date: DATE_POS };
+}
+
+export function buildReceiptPdf(view: ReceiptView, letterheadJpeg?: Uint8Array | null): Blob {
   const ops: DrawOp[] = [];
-  const jpeg = logoJpeg && jpegSize(logoJpeg) ? logoJpeg : null;
+  const jpeg = letterheadJpeg && jpegSize(letterheadJpeg) ? letterheadJpeg : null;
   const jpegMeta = jpeg ? jpegSize(jpeg) : null;
 
-  let cursor = PAGE_H - 36;
   if (jpeg && jpegMeta) {
-    const logoW = 78;
-    const logoH = (logoW * jpegMeta.height) / jpegMeta.width;
     ops.push({
       kind: "image",
-      x: (PAGE_W - logoW) / 2,
-      y: cursor - logoH,
-      width: logoW,
-      height: logoH,
+      x: 0,
+      y: PAGE_H - IMG_H,
+      width: PAGE_W,
+      height: IMG_H,
     });
-    cursor -= logoH + 14;
-  } else {
-    cursor -= 8;
   }
 
-  addCentered(ops, cursor, 14, "F4", RECEIPT_PROPERTY_NAME.toUpperCase());
-  cursor -= 16;
-  ops.push({ kind: "line", x1: MARGIN, y1: cursor, x2: PAGE_W - MARGIN, y2: cursor, width: 1.1 });
-  cursor -= 18;
-  const dateText = `Date: ${view.dateLabel}`;
-  ops.push({
-    kind: "text",
-    x: PAGE_W - MARGIN - textWidth(dateText, 10, false),
-    y: cursor,
-    size: 10,
-    font: "F1",
-    text: dateText,
-  });
-  cursor -= 28;
-  addCentered(ops, cursor, 16, "F2", "PAYMENT RECEIPT");
+  ops.push({ kind: "rect", x: DATE_COVER.x, y: DATE_COVER.y, w: DATE_COVER.w, h: DATE_COVER.h });
+  ops.push({ kind: "text", x: DATE_POS.x, y: DATE_POS.y, size: 10, font: "F1", text: view.dateLabel });
+
+  let cursor = BODY_TOP;
+  addCentered(ops, cursor, 13, "F2", "PAYMENT RECEIPT");
   if (view.receipt.status === "VOID") {
     cursor -= 16;
-    addCentered(ops, cursor, 11, "F2", "VOID");
+    addCentered(ops, cursor, 10, "F2", "VOID");
   }
-
-  cursor = Math.min(cursor - 36, HEADER_BOTTOM);
-  const lines: Array<{ label: string; value: string; money?: boolean; paid?: boolean }> = [
-    { label: "Receipt No.", value: view.receipt.receiptNumber },
-    { label: "Date", value: view.dateLabel },
-    { label: "Client", value: view.clientName },
-    { label: "Flat", value: view.flat },
-    { label: "Check-in", value: view.checkInLabel },
-    { label: "Check-out", value: view.checkOutLabel },
-    { label: "Stay", value: `${view.nights} Night${view.nights === 1 ? "" : "s"}` },
-  ];
-  for (const line of lines) {
-    addRow(ops, cursor, line.label, line.value);
-    cursor -= 16;
-  }
-
-  cursor -= 8;
-  ops.push({ kind: "line", x1: MARGIN, y1: cursor, x2: PAGE_W - MARGIN, y2: cursor, width: 0.6 });
-  cursor -= 22;
-  addRow(ops, cursor, "Total Stay Amount", formatPKR(view.totalStayAmount));
-  cursor -= 18;
-  addRow(ops, cursor, "Amount Received", formatPKR(view.amountReceived), true);
-  cursor -= 18;
-  addRow(ops, cursor, "Total Received To Date", formatPKR(view.totalReceivedToDate));
-  cursor -= 18;
-  if (view.paidInFull) {
-    addRow(ops, cursor, "Balance", "PAID IN FULL", true);
-  } else {
-    addRow(ops, cursor, "Remaining Balance", formatPKR(view.remaining));
-  }
-  cursor -= 22;
-  ops.push({ kind: "line", x1: MARGIN, y1: cursor, x2: PAGE_W - MARGIN, y2: cursor, width: 0.6 });
-  cursor -= 22;
-  addRow(ops, cursor, "Payment Method", view.paymentMethod);
-  cursor -= 16;
-  addRow(ops, cursor, "Received By", view.receivedBy);
 
   cursor -= 28;
-  for (const line of wrapText(RECEIPT_CONFIRMATION, 9.5, PAGE_W - MARGIN * 2)) {
-    ops.push({ kind: "text", x: MARGIN, y: cursor, size: 9.5, font: "F1", text: line });
-    cursor -= 13;
-  }
-  cursor -= 10;
-  for (const line of wrapText(RECEIPT_THANK_YOU, 9.5, PAGE_W - MARGIN * 2)) {
-    ops.push({ kind: "text", x: MARGIN, y: cursor, size: 9.5, font: "F1", text: line });
-    cursor -= 13;
+  const meta: Array<[string, string]> = [
+    ["Receipt No.", view.receipt.receiptNumber],
+    ["Client", view.clientName],
+    ["Flat", view.flat],
+    ["Check-in", view.checkInLabel],
+    ["Check-out", view.checkOutLabel],
+    ["Stay", `${view.nights} Night${view.nights === 1 ? "" : "s"}`],
+  ];
+  for (const [label, value] of meta) {
+    cursor = addRow(ops, cursor, label, value) - 15;
   }
 
-  ops.push({ kind: "text", x: MARGIN, y: 70, size: 11, font: "F4", text: RECEIPT_SIGNATORY_NAME });
-  ops.push({ kind: "text", x: MARGIN, y: 56, size: 9, font: "F3", text: RECEIPT_SIGNATORY_TITLE });
+  cursor -= 6;
+  ops.push({ kind: "line", x1: CONTENT_LEFT, y1: cursor, x2: CONTENT_RIGHT, y2: cursor, width: 0.4 });
+  cursor -= 20;
+  cursor = addRow(ops, cursor, "Total Stay Amount", formatPKR(view.totalStayAmount)) - 16;
+  cursor = addRow(ops, cursor, "Amount Received", formatPKR(view.amountReceived), true) - 16;
+  cursor = addRow(ops, cursor, "Total Received To Date", formatPKR(view.totalReceivedToDate)) - 16;
+  if (view.paidInFull) {
+    cursor = addRow(ops, cursor, "Balance", "PAID IN FULL", true) - 16;
+  } else {
+    cursor = addRow(ops, cursor, "Remaining Balance", formatPKR(view.remaining)) - 16;
+  }
 
-  if (cursor < FOOTER_TOP + 8) {
-    // Content is clipped by reserved footer; layout is sized so this should not happen.
+  cursor -= 6;
+  ops.push({ kind: "line", x1: CONTENT_LEFT, y1: cursor, x2: CONTENT_RIGHT, y2: cursor, width: 0.4 });
+  cursor -= 20;
+  cursor = addRow(ops, cursor, "Payment Method", view.paymentMethod) - 15;
+  cursor = addRow(ops, cursor, "Received By", view.receivedBy) - 22;
+
+  for (const line of wrapText(RECEIPT_CONFIRMATION, 9.5, CONTENT_WIDTH)) {
+    if (cursor < BODY_BOTTOM + 28) break;
+    ops.push({ kind: "text", x: CONTENT_LEFT, y: cursor, size: 9.5, font: "F1", text: line });
+    cursor -= 13;
+  }
+  cursor -= 8;
+  for (const line of wrapText(RECEIPT_THANK_YOU, 9.5, CONTENT_WIDTH)) {
+    if (cursor < BODY_BOTTOM + 12) break;
+    ops.push({ kind: "text", x: CONTENT_LEFT, y: cursor, size: 9.5, font: "F1", text: line });
+    cursor -= 13;
   }
 
   const content = opStream(ops);
@@ -231,8 +231,8 @@ export function buildReceiptPdf(view: ReceiptView, logoJpeg?: Uint8Array | null)
   addObject(encode("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj"));
   addObject(encode("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj"));
   const resources = jpeg
-    ? "/Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> /XObject << /Im1 9 0 R >>"
-    : "/Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >>";
+    ? "/Font << /F1 5 0 R /F2 6 0 R >> /XObject << /Im1 7 0 R >>"
+    : "/Font << /F1 5 0 R /F2 6 0 R >>";
   addObject(
     encode(
       `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Contents 4 0 R /Resources << ${resources} >> >> endobj`,
@@ -241,13 +241,11 @@ export function buildReceiptPdf(view: ReceiptView, logoJpeg?: Uint8Array | null)
   addObject(concat([encode(`4 0 obj << /Length ${contentBytes.length} >> stream\n`), contentBytes, encode("\nendstream endobj")]));
   addObject(encode("5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj"));
   addObject(encode("6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj"));
-  addObject(encode("7 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> endobj"));
-  addObject(encode("8 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >> endobj"));
   if (jpeg && jpegMeta) {
     addObject(
       concat([
         encode(
-          `9 0 obj << /Type /XObject /Subtype /Image /Width ${jpegMeta.width} /Height ${jpegMeta.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >> stream\n`,
+          `7 0 obj << /Type /XObject /Subtype /Image /Width ${jpegMeta.width} /Height ${jpegMeta.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >> stream\n`,
         ),
         jpeg,
         encode("\nendstream endobj"),
@@ -270,30 +268,30 @@ export function buildReceiptPdf(view: ReceiptView, logoJpeg?: Uint8Array | null)
   return new Blob([buffer], { type: "application/pdf" });
 }
 
-let cachedLogo: Uint8Array | null | undefined;
+let cachedLetterhead: Uint8Array | null | undefined;
 
-export async function loadLetterheadLogo(): Promise<Uint8Array | null> {
-  if (cachedLogo !== undefined) return cachedLogo;
+export async function loadLetterheadJpeg(): Promise<Uint8Array | null> {
+  if (cachedLetterhead !== undefined) return cachedLetterhead;
   if (typeof fetch !== "function") {
-    cachedLogo = null;
+    cachedLetterhead = null;
     return null;
   }
   try {
-    const response = await fetch("/letterhead-logo.jpg", { cache: "force-cache" });
+    const response = await fetch(LETTERHEAD_SRC, { cache: "force-cache" });
     if (!response.ok) {
-      cachedLogo = null;
+      cachedLetterhead = null;
       return null;
     }
-    cachedLogo = new Uint8Array(await response.arrayBuffer());
-    return cachedLogo;
+    cachedLetterhead = new Uint8Array(await response.arrayBuffer());
+    return cachedLetterhead;
   } catch {
-    cachedLogo = null;
+    cachedLetterhead = null;
     return null;
   }
 }
 
 export async function buildReceiptPdfFile(view: ReceiptView): Promise<File> {
-  const logo = await loadLetterheadLogo();
-  const blob = buildReceiptPdf(view, logo);
+  const letterhead = await loadLetterheadJpeg();
+  const blob = buildReceiptPdf(view, letterhead);
   return new File([blob], receiptPdfFileName(view.receipt.receiptNumber), { type: "application/pdf" });
 }

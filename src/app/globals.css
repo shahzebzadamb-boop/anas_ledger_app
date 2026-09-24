@@ -144,3 +144,17 @@ select:focus-visible {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+.receipt-preview-frame {
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  container-type: inline-size;
+  background: #ffffff;
+}
+
+.receipt-preview-page {
+  width: 210mm;
+  height: 297mm;
+  transform-origin: top left;
+  transform: scale(calc(100cqw / 210mm));
+}

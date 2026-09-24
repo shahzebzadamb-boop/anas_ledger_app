@@ -7,9 +7,7 @@ export const RECEIPT_CONFIRMATION =
   "This receipt confirms the payment received against the stay detailed above.";
 export const RECEIPT_THANK_YOU =
   "Thank you for staying with us. We look forward to welcoming you again.";
-export const RECEIPT_SIGNATORY_NAME = "Anas";
-export const RECEIPT_SIGNATORY_TITLE = "Senior Property Manager";
-export const RECEIPT_PROPERTY_NAME = "Capital Lagoon Luxury Living";
+export const LETTERHEAD_SRC = "/receipts/capital-lagoon-letterhead.jpg";
 
 export type ReceiptView = {
   receipt: Receipt;
