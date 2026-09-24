@@ -1094,7 +1094,7 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     { ...seeded, receipts: [] },
     { type: "GENERATE_RECEIPT", paymentId: firstPay.id },
   );
-  const letterhead = new Uint8Array(readFileSync(join(process.cwd(), "public/receipts/capital-lagoon-letterhead.jpg")));
+  const letterhead = new Uint8Array(readFileSync(join(process.cwd(), "public/letterhead/capital-lagoon-letterhead.jpg")));
   const pdf = view ? buildReceiptPdf(view, letterhead) : null;
   const utcShift = formatKarachiDateLong("2026-09-23T19:00:00.000Z");
   const longView = view
