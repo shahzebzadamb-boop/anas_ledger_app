@@ -10,7 +10,8 @@ import { flatName, receiverName } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { buildReceiptView, filterReceiptRows, type ReceiptFilterPreset } from "@/lib/receipts";
 import { useLedger } from "@/lib/store";
-import { FLAT_NAMES, type DateRange } from "@/types";
+import { activeFlats } from "@/lib/flats";
+import type { DateRange } from "@/types";
 import { ReceiptShareButtons } from "@/components/receipts/ReceiptShareButtons";
 
 function ReportsReceiptsInner() {
@@ -93,9 +94,9 @@ function ReportsReceiptsInner() {
         <button type="button" className={`chip ${flat === "all" ? "chip-active" : ""}`} onClick={() => setFlat("all")}>
           All Flats
         </button>
-        {FLAT_NAMES.map((name) => (
-          <button key={name} type="button" className={`chip ${flat === name ? "chip-active" : ""}`} onClick={() => setFlat(name)}>
-            {name}
+        {activeFlats(state).map((item) => (
+          <button key={item.id} type="button" className={`chip ${flat === item.name ? "chip-active" : ""}`} onClick={() => setFlat(item.name)}>
+            {item.name}
           </button>
         ))}
       </div>

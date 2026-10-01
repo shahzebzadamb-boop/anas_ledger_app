@@ -22,7 +22,7 @@ export type ExpenseCategory =
   | "WATER"
   | "OTHER";
 
-export type DateFilterPreset = "today" | "7days" | "month" | "custom";
+export type DateFilterPreset = "today" | "7days" | "month" | "custom" | "all";
 
 export type DateRange = {
   from: Date;
@@ -32,7 +32,12 @@ export type DateRange = {
 export type Flat = {
   id: string;
   name: string;
+  displayName: string | null;
   sortOrder: number;
+  active: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Client = {
@@ -297,4 +302,3 @@ export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: "OTHER", label: "Other" },
 ];
 
-export const FLAT_NAMES = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;

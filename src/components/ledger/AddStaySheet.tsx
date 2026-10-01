@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, formatDateShort, karachiDateInput, nightsBetween } from "@/lib/dates";
+import { activeFlats, defaultFlatName } from "@/lib/flats";
 import { formatPKR, parseFormAmount } from "@/lib/money";
 import { displayPhone, normalizePhone } from "@/lib/phone";
 import { useLedger } from "@/lib/store";
 import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
-import { FLAT_NAMES, PAYMENT_METHODS, type PaymentMethod } from "@/types";
+import { PAYMENT_METHODS, type PaymentMethod } from "@/types";
 
 export function AddStaySheet({
   defaultFlat,
@@ -24,7 +25,7 @@ export function AddStaySheet({
   const today = karachiDateInput();
   const lock = useRef(false);
   const [flat, setFlat] = useState(
-    defaultFlat && defaultFlat !== "all" ? defaultFlat : (state.flats[0]?.name ?? FLAT_NAMES[0]),
+    defaultFlat && defaultFlat !== "all" ? defaultFlat : defaultFlatName(state),
   );
   const [clientName, setClientName] = useState("");
   const [phone, setPhone] = useState("");
@@ -155,7 +156,7 @@ export function AddStaySheet({
         <div className="space-y-3">
           <Field label="Flat *">
             <select className={fieldClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
-              {state.flats.map((item) => (
+              {activeFlats(state).map((item) => (
                 <option key={item.id} value={item.name}>
                   {item.name}
                 </option>

@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { MonthlyReports } from "@/components/reports/MonthlyReports";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { inRange, rangeForPreset } from "@/lib/dates";
+import { inRange, periodLabel, rangeForPreset } from "@/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { useLedger } from "@/lib/store";
+import { activeFlats } from "@/lib/flats";
 import type { DateFilterPreset, DateRange } from "@/types";
 
 export default function ReportsPage() {
@@ -59,7 +60,7 @@ export default function ReportsPage() {
     setBusy(true);
     const { buildReportPdf } = await import("@/lib/pdf");
     const blob = buildReportPdf({
-      periodLabel: preset === "today" ? "Today" : preset === "7days" ? "Last 7 days" : preset === "custom" ? "Custom" : "This month",
+      periodLabel: periodLabel(preset, range),
       flatLabel: selectedFlat === "all" ? "All Flats" : `Flat ${selectedFlat}`,
       totals,
       flats,
@@ -80,13 +81,13 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle="Monthly reports stay available. Home stays on the current month." />
+      <PageHeader title="Reports" subtitle="Formal monthly reports. Home can also switch months." />
       <Link href="/reports/receipts" className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
         Receipts
       </Link>
       <MonthlyReports state={state} />
       <DateFilter
-        flats={state.flats}
+        flats={activeFlats(state)}
         selectedFlat={selectedFlat}
         onFlat={setSelectedFlat}
         preset={preset}

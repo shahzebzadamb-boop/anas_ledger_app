@@ -154,9 +154,17 @@ export function carriedForwardPending(state: LedgerState, range: DateRange, sele
     .reduce((sum, stay) => sum + stayRemaining(stay.id, state), 0);
 }
 
+export function stayCountsTowardClosingPending(stay: Stay, state: LedgerState, asOf: Date): boolean {
+  if (!isLive(stay) || new Date(stay.checkIn) > asOf) return false;
+  if (stayBalanceAsOf(stay.id, state, asOf) <= 0) return false;
+  if (isStayPendingActive(stay, state)) return true;
+  // Fully collected later: still count the balance that existed at asOf.
+  return stayRemaining(stay.id, state) === 0;
+}
+
 export function outstandingAsOf(state: LedgerState, asOf: Date, selectedFlat = "all"): number {
   return state.stays
-    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat))
+    .filter((stay) => matchesFlat(stay.flatId, selectedFlat) && stayCountsTowardClosingPending(stay, state, asOf))
     .reduce((sum, stay) => sum + stayBalanceAsOf(stay.id, state, asOf), 0);
 }
 
@@ -190,6 +198,16 @@ export function periodTotals(state: LedgerState, range: DateRange, selectedFlat 
     carriedForward,
     newPending: Math.max(0, pending - carriedForward),
   };
+}
+
+export function monthHasActivity(state: LedgerState, year: number, month: number): boolean {
+  const range = karachiMonthRange(year, month);
+  const hits = (iso: string) => inRange(iso, range);
+  if (state.rentEntries.some((item) => isLive(item) && hits(item.occurredAt))) return true;
+  if (state.payments.some((item) => isLive(item) && hits(item.receivedAt))) return true;
+  if (state.expenses.some((item) => isLive(item) && hits(item.spentAt))) return true;
+  if (state.stays.some((stay) => isLive(stay) && (hits(stay.checkIn) || hits(stay.checkOut)))) return true;
+  return false;
 }
 
 export type ReceiverMonthRow = { name: string; amount: number };

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { availableForWithdrawal, matchClient, paymentStayChoices, uniquePaymentStayId } from "@/lib/ledger";
+import { knownFlatNames } from "@/lib/flats";
 import {
   correctionPreview,
   correctionQuestion,
@@ -158,6 +159,7 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
     () => state.clients.map((client) => ({ name: client.name, phone: client.phone })),
     [state.clients],
   );
+  const knownFlats = useMemo(() => knownFlatNames(state), [state]);
 
   useEffect(() => {
     const focus = () => inputRef.current?.focus();
@@ -192,7 +194,7 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
     setError(null);
     setStayId(null);
     setCorrectionId(null);
-    setParsed(forceType ? parseQuickEntry(text, { knownClients }, forceType) : parseQuickEntry(text, { knownClients }));
+    setParsed(forceType ? parseQuickEntry(text, { knownClients, knownFlats }, forceType) : parseQuickEntry(text, { knownClients, knownFlats }));
   }
 
   function onSubmit(event: FormEvent) {

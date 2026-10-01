@@ -1,38 +1,52 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { startOfMonth } from "date-fns";
 import Link from "next/link";
 import { Calculator } from "lucide-react";
 import { DateFilter } from "@/components/dashboard/DateFilter";
+import { MonthFilter } from "@/components/dashboard/MonthFilter";
 import { NeedsAttention } from "@/components/dashboard/NeedsAttention";
 import { QuickEntry } from "@/components/dashboard/QuickEntry";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SummaryCards } from "@/components/dashboard/SummaryCards";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { periodLabel, rangeForPreset } from "@/lib/dates";
+import { karachiYmd, pad2 } from "@/lib/dates";
+import { flatsForChips, flatsUsedInRange } from "@/lib/flats";
+import {
+  currentHomePeriod,
+  isHistoricalRange,
+  periodLabelForHome,
+  periodRange,
+  toPreset,
+  type HomePeriod,
+} from "@/lib/home-period";
 import { dashboardTotals, needsAttention, stayLedgerRows } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
 import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
-import type { DateFilterPreset, DateRange } from "@/types";
 
 export function Dashboard() {
   const { state } = useLedger();
-  const [preset, setPreset] = useState<DateFilterPreset>("month");
+  const [period, setPeriod] = useState<HomePeriod>(() => currentHomePeriod());
   const [selectedFlat, setSelectedFlat] = useState("all");
-  const [custom, setCustom] = useState<DateRange>({
-    from: startOfMonth(new Date()),
-    to: new Date(),
-  });
   const [toast, setToast] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
 
-  const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
-  const attention = useMemo(() => needsAttention(state, selectedFlat), [state, selectedFlat]);
-  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
-  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [state, range, selectedFlat]);
+  const range = useMemo(() => periodRange(period, state), [period, state]);
+  const historical = isHistoricalRange(range);
+  const asOf = historical ? range.to : undefined;
+  const attention = useMemo(() => needsAttention(state, selectedFlat, asOf), [asOf, selectedFlat, state]);
+  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat, asOf), [asOf, range, selectedFlat, state]);
+  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [range, selectedFlat, state]);
   const reviewCount = state.reviews.filter((item) => item.status === "NEEDS_REVIEW").length;
+  const chipFlats = useMemo(() => {
+    const used = historical ? flatsUsedInRange(state, range.from, range.to) : [];
+    return flatsForChips(state, used);
+  }, [historical, range.from, range.to, state]);
+  const fromYmd = `${karachiYmd(range.from).year}-${pad2(karachiYmd(range.from).month)}-${pad2(karachiYmd(range.from).day)}`;
+  const toYmd = `${karachiYmd(range.to).year}-${pad2(karachiYmd(range.to).month)}-${pad2(karachiYmd(range.to).day)}`;
+  const today = karachiYmd();
+  const showCarryForward = period.kind === "month" && period.year === today.year && period.month === today.month;
 
   return (
     <div className="space-y-3.5">
@@ -74,23 +88,27 @@ export function Dashboard() {
           </button>
         ) : null}
       </div>
+      <MonthFilter period={period} onChange={setPeriod} state={state} />
       <SummaryCards
         totals={totals}
         flat={selectedFlat}
-        preset={preset}
-        from={custom.from.toISOString().slice(0, 10)}
-        to={custom.to.toISOString().slice(0, 10)}
-        periodLabel={periodLabel(preset, range)}
-        showCarryForward={preset === "month"}
+        preset={toPreset(period)}
+        from={fromYmd}
+        to={toYmd}
+        year={period.kind === "month" ? period.year : undefined}
+        month={period.kind === "month" ? period.month : undefined}
+        periodLabel={periodLabelForHome(period)}
+        showCarryForward={showCarryForward}
       />
       <DateFilter
-        flats={state.flats}
+        flats={chipFlats}
         selectedFlat={selectedFlat}
         onFlat={setSelectedFlat}
-        preset={preset}
-        custom={custom}
-        onPreset={setPreset}
-        onCustom={setCustom}
+        preset={toPreset(period)}
+        custom={period.custom}
+        onPreset={() => undefined}
+        onCustom={() => undefined}
+        hidePresets
       />
       <QuickEntry
         onAdded={(info) => {
@@ -105,7 +123,11 @@ export function Dashboard() {
         }}
       />
       <NeedsAttention items={attention} />
-      <RecentActivity stays={stays} showFlat={selectedFlat === "all"} />
+      <RecentActivity
+        stays={stays}
+        showFlat={selectedFlat === "all"}
+        emptyLabel={period.kind === "month" ? "No activity for this month." : "No stays yet."}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
 import { applyCorrection, syncStayPending, withAudit } from "@/lib/corrections";
 import { formatPKR, isPlausibleLedgerAmount, isValidMoneyAmount } from "@/lib/money";
 import { nightsBetween } from "@/lib/dates";
+import { flatHasHistory, flatIdForName, isFlatActive, normalizeFlatCode } from "@/lib/flats";
 import { normalizePhone } from "@/lib/phone";
 import type { CorrectionDraft } from "@/lib/parse-correction";
 import type { ConfirmableDraft } from "@/lib/parse-quick-entry";
@@ -72,6 +73,11 @@ export type Action =
   | { type: "APPLY_QUICK_ENTRY"; parsed: ConfirmableDraft }
   | { type: "SET_CLIENT_PHONE"; clientId: string; phone: string }
   | { type: "RENAME_FLAT"; flatId: string; name: string }
+  | { type: "ADD_FLAT"; payload: { name: string; displayName?: string | null } }
+  | { type: "UPDATE_FLAT"; payload: { flatId: string; displayName?: string | null; name?: string } }
+  | { type: "ARCHIVE_FLAT"; flatId: string }
+  | { type: "RESTORE_FLAT"; flatId: string }
+  | { type: "DELETE_FLAT"; flatId: string }
   | { type: "REVIEW_STATUS"; id: string; status: "CONFIRMED" | "IGNORED" }
   | { type: "REVIEW_PENDING"; id: string; decision: PendingDecision }
   | { type: "APPLY_MIGRATION_UPDATE"; id: string; patch: MigrationPatch; correctionText?: string }
@@ -459,8 +465,10 @@ function applyAddStay(state: LedgerState, input: AddStayInput): LedgerState {
   const found = findClient(state, name, phone);
   let next = found.state;
   const client = found.client;
-  const flatId = `flat_${input.flat}`;
-  if (!next.flats.some((item) => item.id === flatId)) return next;
+  const flatName = normalizeFlatCode(input.flat) ?? input.flat;
+  const existingFlat = next.flats.find((item) => item.id === flatIdForName(flatName) || item.name === flatName);
+  if (!existingFlat || !isFlatActive(existingFlat)) return next;
+  const flatId = existingFlat.id;
 
   const stayId = createId("stay");
   const stay = {
@@ -594,6 +602,15 @@ function withDefaultReceivers(state: LedgerState): LedgerState {
 function normalizeState(state: LedgerState): LedgerState {
   return withDefaultReceivers({
     ...state,
+    flats: (state.flats ?? []).map((flat, index) => ({
+      ...flat,
+      displayName: flat.displayName ?? null,
+      active: flat.active !== false && !flat.archivedAt,
+      archivedAt: flat.archivedAt ?? null,
+      createdAt: flat.createdAt ?? "2026-01-01T00:00:00.000Z",
+      updatedAt: flat.updatedAt ?? flat.createdAt ?? "2026-01-01T00:00:00.000Z",
+      sortOrder: Number.isFinite(flat.sortOrder) ? flat.sortOrder : index + 1,
+    })),
     stays: state.stays.map((stay) => ({
       ...stay,
       activePending: stay.activePending ?? false,
@@ -670,13 +687,91 @@ function reducer(state: LedgerState, action: Action): LedgerState {
             : client,
         ),
       };
-    case "RENAME_FLAT":
+    case "RENAME_FLAT": {
+      const nextName = normalizeFlatCode(action.name) ?? action.name.trim();
+      const current = state.flats.find((flat) => flat.id === action.flatId);
+      if (!current || !nextName) return state;
+      if (state.flats.some((flat) => flat.id !== action.flatId && (normalizeFlatCode(flat.name) ?? flat.name) === nextName)) {
+        return state;
+      }
+      if (flatHasHistory(state, action.flatId) && nextName !== current.name) {
+        return {
+          ...state,
+          flats: state.flats.map((flat) =>
+            flat.id === action.flatId ? { ...flat, displayName: nextName, updatedAt: nowISO() } : flat,
+          ),
+        };
+      }
       return {
         ...state,
         flats: state.flats.map((flat) =>
-          flat.id === action.flatId ? { ...flat, name: action.name } : flat,
+          flat.id === action.flatId ? { ...flat, name: nextName, updatedAt: nowISO() } : flat,
         ),
       };
+    }
+    case "ADD_FLAT": {
+      const name = normalizeFlatCode(action.payload.name);
+      if (!name) return state;
+      if (state.flats.some((flat) => (normalizeFlatCode(flat.name) ?? flat.name) === name)) return state;
+      const now = nowISO();
+      const sortOrder = state.flats.reduce((max, flat) => Math.max(max, flat.sortOrder), 0) + 1;
+      const displayName = action.payload.displayName?.trim() || null;
+      return {
+        ...state,
+        flats: [
+          ...state.flats,
+          {
+            id: flatIdForName(name),
+            name,
+            displayName,
+            sortOrder,
+            active: true,
+            archivedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      };
+    }
+    case "UPDATE_FLAT": {
+      const current = state.flats.find((flat) => flat.id === action.payload.flatId);
+      if (!current) return state;
+      const displayName =
+        action.payload.displayName === undefined ? current.displayName : action.payload.displayName?.trim() || null;
+      let name = current.name;
+      if (action.payload.name) {
+        const nextName = normalizeFlatCode(action.payload.name);
+        if (nextName && !flatHasHistory(state, current.id) && !state.flats.some((flat) => flat.id !== current.id && (normalizeFlatCode(flat.name) ?? flat.name) === nextName)) {
+          name = nextName;
+        }
+      }
+      return {
+        ...state,
+        flats: state.flats.map((flat) =>
+          flat.id === current.id ? { ...flat, name, displayName, updatedAt: nowISO() } : flat,
+        ),
+      };
+    }
+    case "ARCHIVE_FLAT":
+      return {
+        ...state,
+        flats: state.flats.map((flat) =>
+          flat.id === action.flatId
+            ? { ...flat, active: false, archivedAt: nowISO(), updatedAt: nowISO() }
+            : flat,
+        ),
+      };
+    case "RESTORE_FLAT":
+      return {
+        ...state,
+        flats: state.flats.map((flat) =>
+          flat.id === action.flatId ? { ...flat, active: true, archivedAt: null, updatedAt: nowISO() } : flat,
+        ),
+      };
+    case "DELETE_FLAT": {
+      if (flatHasHistory(state, action.flatId)) return state;
+      return { ...state, flats: state.flats.filter((flat) => flat.id !== action.flatId) };
+    }
     case "APPLY_MIGRATION_UPDATE":
       return applyMigrationPatch(state, action.id, action.patch, action.correctionText);
     case "REVIEW_STATUS":
@@ -985,6 +1080,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
           amount: parsed.amount,
           method: parsed.method,
           receivedByName: parsed.receivedByName,
+          receivedAt: parsed.receivedAt,
         });
       }
 
@@ -1100,8 +1196,12 @@ function reducer(state: LedgerState, action: Action): LedgerState {
 
       if (parsed.type === "rent") {
         const stayId = createId("stay");
-        const flatId = parsed.flat ? `flat_${parsed.flat}` : next.flats[0]?.id;
-        if (!flatId) return next;
+        const code = parsed.flat ? normalizeFlatCode(parsed.flat) ?? parsed.flat : null;
+        const existingFlat = code
+          ? next.flats.find((item) => item.id === flatIdForName(code) || item.name === code)
+          : next.flats.find(isFlatActive);
+        if (!existingFlat || !isFlatActive(existingFlat)) return next;
+        const flatId = existingFlat.id;
         const stay = {
           id: stayId,
           createdAt: nowISO(),
@@ -1143,6 +1243,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
             amount: parsed.receivedAmount,
             method: parsed.method,
             receivedByName: parsed.receivedByName,
+            receivedAt: asDate(parsed.checkIn).toISOString(),
           });
         }
         return next;

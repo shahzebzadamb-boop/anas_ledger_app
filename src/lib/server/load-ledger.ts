@@ -35,7 +35,9 @@ export async function loadLedgerState(): Promise<LedgerState> {
     [silences],
     [cycles],
   ] = await Promise.all([
-    pool.query<RowDataPacket[]>("SELECT id, name, sortOrder FROM flats ORDER BY sortOrder ASC"),
+    pool.query<RowDataPacket[]>(
+      "SELECT id, name, sortOrder, displayName, active, archivedAt, createdAt, updatedAt FROM flats ORDER BY sortOrder ASC, name ASC",
+    ),
     pool.query<RowDataPacket[]>("SELECT id, createdAt, name, active FROM receivers ORDER BY createdAt ASC"),
     pool.query<RowDataPacket[]>(
       "SELECT id, createdAt, name, phone, phoneNormalized, phoneMissing, notes FROM clients ORDER BY name ASC",
@@ -83,7 +85,12 @@ export async function loadLedgerState(): Promise<LedgerState> {
       ? flats.map((row) => ({
           id: String(row.id),
           name: String(row.name),
+          displayName: row.displayName ? String(row.displayName) : null,
           sortOrder: Number(row.sortOrder),
+          active: row.active == null ? true : asBool(row.active),
+          archivedAt: row.archivedAt ? toIso(row.archivedAt) : null,
+          createdAt: row.createdAt ? toIso(row.createdAt) : "2026-01-01T00:00:00.000Z",
+          updatedAt: row.updatedAt ? toIso(row.updatedAt) : row.createdAt ? toIso(row.createdAt) : "2026-01-01T00:00:00.000Z",
         }))
       : empty.flats,
     receivers: receivers.length

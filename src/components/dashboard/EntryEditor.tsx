@@ -6,6 +6,7 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { formatPKR, moneyInputFromSaved, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type Expense, type Payment, type SecurityTransaction, type Stay } from "@/types";
+import { flatsForSelect } from "@/lib/flats";
 import { stayCollectible } from "@/lib/ledger";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -150,7 +151,7 @@ function StayFields({
       </Field>
       <Field label="Flat">
         <select className={inputClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
-          {state.flats.map((item) => (
+          {flatsForSelect(state, stay.flatId).map((item) => (
             <option key={item.id} value={item.name}>
               {item.name}
             </option>
@@ -316,7 +317,7 @@ function ExpenseFields({
       </Field>
       <Field label="Flat">
         <select className={inputClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
-          {state.flats.map((item) => (
+          {flatsForSelect(state, expense.flatId).map((item) => (
             <option key={item.id} value={item.name}>
               {item.name}
             </option>
@@ -388,7 +389,7 @@ function SecurityFields({
       <MoneyInput label="Amount" value={amount} allowZero={false} onChange={setAmount} />
       <Field label="Flat">
         <select className={inputClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
-          {state.flats.map((item) => (
+          {flatsForSelect(state, row.flatId).map((item) => (
             <option key={item.id} value={item.name}>
               {item.name}
             </option>

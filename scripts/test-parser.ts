@@ -23,6 +23,7 @@ import {
   listReportMonths,
   toMonthlyReportRecord,
 } from "../src/lib/month-accounting";
+import { allTimeRange, availableHomeMonths } from "../src/lib/home-period";
 import {
   buildAnasPendingNotification,
   buildClientWhatsAppReminder,
@@ -31,6 +32,7 @@ import {
   clientWhatsAppHref,
 } from "../src/lib/reminders";
 import { parseMigrationUpdate } from "../src/lib/parse-migration-update";
+import { activeFlats } from "../src/lib/flats";
 import { detectFlat, parseQuickEntry } from "../src/lib/parse-quick-entry";
 import { looksLikeCorrection } from "../src/lib/parse-correction";
 import { detectReceiverName } from "../src/lib/receivers";
@@ -781,6 +783,7 @@ manual = reducer(manual, {
     amount: 10000,
     method: "EASYPAISA",
     receivedByName: "Khizer",
+    receivedAt: now.toISOString(),
   },
 });
 const afterKhizer = stayLedgerRows(manual, monthRange, "802-A")[0];
@@ -949,8 +952,9 @@ roll = reducer(roll, {
     receivedAt: "2026-10-03T10:00:00+05:00",
   },
 });
-const octAfterPay = dashboardTotals(roll, octRange, "all");
+const octAfterPay = dashboardTotals(roll, octRange, "all", new Date("2026-10-03T10:00:00+05:00"));
 const septAfterPay = buildMonthReport(roll, 2026, 9, new Date("2026-10-03T10:00:00+05:00"));
+const septHomeAfterPay = dashboardTotals(roll, septRange, "all", new Date("2026-10-03T10:00:00+05:00"));
 if (
   octAfterPay.business !== 0 ||
   octAfterPay.received !== 20000 ||
@@ -958,7 +962,11 @@ if (
   octAfterPay.carriedForward !== 30000 ||
   septAfterPay.business !== 500000 ||
   septAfterPay.closingOutstanding !== 50000 ||
-  septAfterPay.pendingCollected !== 0
+  septAfterPay.pendingCollected !== 0 ||
+  septHomeAfterPay.pending !== 50000 ||
+  septHomeAfterPay.received !== 450000 ||
+  septHomeAfterPay.business !== 500000 ||
+  septHomeAfterPay.expenses !== 80000
 ) {
   failed += 1;
   console.error("OCT COLLECT OLD DEBT FAIL", octAfterPay, septAfterPay.closingOutstanding, septAfterPay.pendingCollected);
@@ -981,7 +989,7 @@ roll = reducer(roll, {
     receivedByName: "Anas",
   },
 });
-const octWithStay = dashboardTotals(roll, octRange, "all");
+const octWithStay = dashboardTotals(roll, octRange, "all", new Date("2026-10-05T12:00:00+05:00"));
 if (
   octWithStay.business !== 60000 ||
   octWithStay.received !== 40000 ||
@@ -1191,6 +1199,86 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     console.error("ELIGIBLE FAIL");
   } else {
     console.log("OK payment receipts: one per payment, totals, correction, void, WhatsApp, PDF letterhead text");
+  }
+}
+
+{
+  const octNow = new Date("2026-10-02T12:00:00+05:00");
+  const septView = dashboardTotals(roll, septRange, "all", octNow);
+  const octView = dashboardTotals(roll, octRange, "all", octNow);
+  const backSept = dashboardTotals(roll, septRange, "all", octNow);
+  const months = availableHomeMonths(roll, octNow);
+  if (
+    septView.business !== 500000 ||
+    septView.received !== 450000 ||
+    septView.pending !== 50000 ||
+    septView.expenses !== 80000 ||
+    octView.business !== 60000 ||
+    octView.received !== 40000 ||
+    octView.pending !== 70000 ||
+    octView.carriedForward !== 30000 ||
+    backSept.pending !== 50000 ||
+    !months.some((item) => item.year === 2026 && item.month === 9) ||
+    !months.some((item) => item.year === 2026 && item.month === 10)
+  ) {
+    failed += 1;
+    console.error("HOME MONTH SWITCH FAIL", septView, octView, backSept, months);
+  } else {
+    const allNow = new Date("2026-10-05T12:00:00+05:00");
+    const allView = dashboardTotals(roll, allTimeRange(roll, allNow), "all", allNow);
+    if (allView.pending !== 70000 || allView.business !== 560000 || allView.received !== 490000 || allView.expenses !== 80000) {
+      failed += 1;
+      console.error("ALL TIME HOME FAIL", allView);
+    } else {
+      console.log("OK Home month switch keeps historical September pending");
+      console.log("OK All Time pending is current outstanding");
+    }
+  }
+}
+
+{
+  let flatsState = emptyLedgerState();
+  flatsState = reducer(flatsState, { type: "ADD_FLAT", payload: { name: "912c", displayName: "Centaurus 912-C" } });
+  const added = flatsState.flats.find((item) => item.name === "912-C");
+  const dup = reducer(flatsState, { type: "ADD_FLAT", payload: { name: "912-C" } });
+  const parsed = parseQuickEntry("tufail 912c 2 din total 40k 20k cash", {
+    knownFlats: flatsState.flats.map((item) => item.name),
+    now: new Date("2026-10-02T12:00:00+05:00"),
+  });
+  const used = reducer(flatsState, {
+    type: "ADD_STAY",
+    payload: {
+      flat: "912-C",
+      clientName: "Tufail Khan",
+      phone: "03001234567",
+      checkIn: "2026-10-02T00:00:00+05:00",
+      checkOut: "2026-10-04T00:00:00+05:00",
+      nights: 2,
+      business: 40000,
+      received: 20000,
+    },
+  });
+  const archived = reducer(used, { type: "ARCHIVE_FLAT", flatId: "flat_912-C" });
+  const restored = reducer(archived, { type: "RESTORE_FLAT", flatId: "flat_912-C" });
+  const deletedUnused = reducer(flatsState, { type: "DELETE_FLAT", flatId: "flat_912-C" });
+  const deletedUsed = reducer(used, { type: "DELETE_FLAT", flatId: "flat_912-C" });
+  if (
+    !added ||
+    added.displayName !== "Centaurus 912-C" ||
+    dup.flats.filter((item) => item.name === "912-C").length !== 1 ||
+    parsed.type !== "rent" ||
+    parsed.flat !== "912-C" ||
+    !used.stays.some((stay) => stay.flatId === "flat_912-C") ||
+    archived.flats.find((item) => item.id === "flat_912-C")?.active !== false ||
+    activeFlats(archived).some((item) => item.id === "flat_912-C") ||
+    restored.flats.find((item) => item.id === "flat_912-C")?.active !== true ||
+    deletedUnused.flats.some((item) => item.id === "flat_912-C") ||
+    !deletedUsed.flats.some((item) => item.id === "flat_912-C")
+  ) {
+    failed += 1;
+    console.error("FLAT MANAGEMENT FAIL", added, parsed, archived.flats.find((item) => item.id === "flat_912-C"));
+  } else {
+    console.log("OK apartment add/duplicate/quick-entry/archive/restore/delete-unused");
   }
 }
 

@@ -3,15 +3,24 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { startOfMonth } from "date-fns";
 import { DateFilter } from "@/components/dashboard/DateFilter";
+import { MonthFilter } from "@/components/dashboard/MonthFilter";
 import { StayLedgerCard } from "@/components/dashboard/StayLedgerCard";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 import { AddExpenseSheet } from "@/components/ledger/AddExpenseSheet";
 import { AddPaymentSheet } from "@/components/ledger/AddPaymentSheet";
 import { AddStaySheet } from "@/components/ledger/AddStaySheet";
 import { Button } from "@/components/ui/Button";
-import { formatDate, rangeForPreset } from "@/lib/dates";
+import { formatDate } from "@/lib/dates";
+import { flatsForChips, flatsUsedInRange } from "@/lib/flats";
+import {
+  currentHomePeriod,
+  isHistoricalRange,
+  periodFromPreset,
+  periodRange,
+  toPreset,
+  type HomePeriod,
+} from "@/lib/home-period";
 import {
   dashboardTotals,
   expenseLedgerRows,
@@ -25,7 +34,7 @@ import { formatPKR } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
-import type { DateFilterPreset, DateRange } from "@/types";
+import type { DateFilterPreset } from "@/types";
 
 const tabs: { view: LedgerView; label: string }[] = [
   { view: "business", label: "Business" },
@@ -41,38 +50,60 @@ export function LedgerPage() {
   const view = parseLedgerView(searchParams.get("view"));
   const selectedFlat = searchParams.get("flat") || "all";
   const preset = parseLedgerPreset(searchParams.get("preset"));
-  const [custom, setCustom] = useState<DateRange>(() => ({
-    from: searchParams.get("from") ? new Date(`${searchParams.get("from")}T00:00:00`) : startOfMonth(new Date()),
-    to: searchParams.get("to") ? new Date(`${searchParams.get("to")}T00:00:00`) : new Date(),
-  }));
+  const yearParam = Number(searchParams.get("year") ?? "");
+  const monthParam = Number(searchParams.get("month") ?? "");
+  const current = currentHomePeriod();
+  const [period, setPeriod] = useState<HomePeriod>(() =>
+    periodFromPreset(
+      preset,
+      Number.isFinite(yearParam) ? yearParam : current.year,
+      Number.isFinite(monthParam) ? monthParam : current.month,
+      {
+        from: searchParams.get("from") ? new Date(`${searchParams.get("from")}T00:00:00+05:00`) : current.custom.from,
+        to: searchParams.get("to") ? new Date(`${searchParams.get("to")}T00:00:00+05:00`) : current.custom.to,
+      },
+    ),
+  );
   const [sheet, setSheet] = useState<"stay" | "payment" | "expense" | null>(null);
   const [toast, setToast] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
 
-  const range = useMemo(() => rangeForPreset(preset, custom), [preset, custom]);
-  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
-  const pending = useMemo(() => pendingLedgerRows(state, selectedFlat), [state, selectedFlat]);
-  const payments = useMemo(() => paymentLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
-  const expenses = useMemo(() => expenseLedgerRows(state, range, selectedFlat), [state, range, selectedFlat]);
-  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [state, range, selectedFlat]);
+  const range = useMemo(() => periodRange(period, state), [period, state]);
+  const historical = isHistoricalRange(range);
+  const asOf = historical ? range.to : undefined;
+  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat, asOf), [asOf, range, selectedFlat, state]);
+  const pending = useMemo(() => pendingLedgerRows(state, selectedFlat, asOf), [asOf, selectedFlat, state]);
+  const payments = useMemo(() => paymentLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
+  const expenses = useMemo(() => expenseLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
+  const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [range, selectedFlat, state]);
   const reconciled = operationalReconciled(state, range, selectedFlat, totals);
+  const chipFlats = useMemo(() => {
+    const used = historical ? flatsUsedInRange(state, range.from, range.to) : [];
+    return flatsForChips(state, used);
+  }, [historical, range.from, range.to, state]);
 
   function go(next: {
     view?: LedgerView;
     flat?: string;
-    preset?: DateFilterPreset;
-    from?: string;
-    to?: string;
+    period?: HomePeriod;
   }) {
+    const nextPeriod = next.period ?? period;
     router.replace(
       ledgerHref({
         view: next.view ?? view,
         flat: next.flat ?? selectedFlat,
-        preset: next.preset ?? preset,
-        from: next.from ?? (preset === "custom" ? toInput(custom.from) : undefined),
-        to: next.to ?? (preset === "custom" ? toInput(custom.to) : undefined),
+        preset: toPreset(nextPeriod),
+        from: toInput(nextPeriod.custom.from),
+        to: toInput(nextPeriod.custom.to),
+        year: nextPeriod.kind === "month" ? nextPeriod.year : undefined,
+        month: nextPeriod.kind === "month" ? nextPeriod.month : undefined,
       }),
     );
+  }
+
+  function changePeriod(next: HomePeriod) {
+    setPeriod(next);
+    go({ period: next });
   }
 
   function added(info?: { receiptId?: string | null }) {
@@ -120,17 +151,16 @@ export function LedgerPage() {
           </button>
         ))}
       </div>
+      <MonthFilter period={period} onChange={changePeriod} state={state} />
       <DateFilter
-        flats={state.flats}
+        flats={chipFlats}
         selectedFlat={selectedFlat}
         onFlat={(value) => go({ flat: value })}
-        preset={preset}
-        custom={custom}
-        onPreset={(value) => go({ preset: value, from: toInput(custom.from), to: toInput(custom.to) })}
-        onCustom={(value) => {
-          setCustom(value);
-          go({ preset: "custom", from: toInput(value.from), to: toInput(value.to) });
-        }}
+        preset={toPreset(period)}
+        custom={period.custom}
+        onPreset={(value: DateFilterPreset) => changePeriod(periodFromPreset(value, period.year, period.month, period.custom))}
+        onCustom={(value) => changePeriod({ ...period, kind: "custom", custom: value })}
+        hidePresets
       />
       {!reconciled ? (
         <p className="text-sm font-normal text-warning">Totals do not match this ledger. Check the filters.</p>
@@ -267,6 +297,11 @@ function ExpenseList({
   );
 }
 
-function toInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+function toInput(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }

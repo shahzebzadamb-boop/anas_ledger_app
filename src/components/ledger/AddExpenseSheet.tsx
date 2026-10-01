@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, karachiDateInput } from "@/lib/dates";
+import { activeFlats, defaultFlatName } from "@/lib/flats";
 import { parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type ExpenseCategory, type PaymentMethod } from "@/types";
@@ -21,7 +22,7 @@ export function AddExpenseSheet({
   const { persist, state } = useLedger();
   const lock = useRef(false);
   const [flat, setFlat] = useState(
-    defaultFlat && defaultFlat !== "all" ? defaultFlat : (state.flats[0]?.name ?? ""),
+    defaultFlat && defaultFlat !== "all" ? defaultFlat : defaultFlatName(state),
   );
   const [date, setDate] = useState(karachiDateInput());
   const [category, setCategory] = useState<ExpenseCategory>("CLEANING");
@@ -75,7 +76,7 @@ export function AddExpenseSheet({
       <div className="space-y-3">
         <Field label="Flat *">
           <select className={fieldClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
-            {state.flats.map((item) => (
+            {activeFlats(state).map((item) => (
               <option key={item.id} value={item.name}>
                 {item.name}
               </option>

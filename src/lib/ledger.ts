@@ -5,8 +5,13 @@ import type {
   LedgerState,
   Stay,
 } from "@/types";
-import { inRange } from "@/lib/dates";
-import { operationalTotals } from "@/lib/month-accounting";
+import { inRange, startOfToday } from "@/lib/dates";
+import {
+  operationalTotals,
+  outstandingAsOf,
+  stayBalanceAsOf,
+  stayCountsTowardClosingPending,
+} from "@/lib/month-accounting";
 import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 
@@ -231,11 +236,32 @@ export type PaymentLedgerRow = {
   notes: string | null;
 };
 
-function toStayLedgerRow(stay: Stay, state: LedgerState): StayLedgerRow {
+function toStayLedgerRow(stay: Stay, state: LedgerState, asOf?: Date): StayLedgerRow {
   const payments = state.payments
-    .filter((item) => item.stayId === stay.id && isLive(item) && isPlausibleLedgerAmount(item.amount) && isRentPayment(item, state.reviews))
+    .filter(
+      (item) =>
+        item.stayId === stay.id &&
+        isLive(item) &&
+        isPlausibleLedgerAmount(item.amount) &&
+        isRentPayment(item, state.reviews) &&
+        (!asOf || new Date(item.receivedAt) <= asOf),
+    )
     .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
-  const pending = stayRemaining(stay.id, state);
+  const pending = asOf ? stayBalanceAsOf(stay.id, state, asOf) : stayRemaining(stay.id, state);
+  const business = asOf
+    ? Math.max(
+        0,
+        state.rentEntries
+          .filter((item) => item.stayId === stay.id && isLive(item) && isPlausibleLedgerAmount(item.amount) && new Date(item.occurredAt) <= asOf)
+          .reduce((sum, item) => sum + item.amount, 0) -
+          state.discounts
+            .filter((item) => item.stayId === stay.id && isLive(item) && new Date(item.occurredAt) <= asOf)
+            .reduce((sum, item) => sum + item.amount, 0),
+      )
+    : stayCollectible(stay.id, state);
+  const received = asOf
+    ? payments.reduce((sum, item) => sum + item.amount, 0)
+    : stayPayments(stay.id, state);
   return {
     stayId: stay.id,
     clientId: stay.clientId,
@@ -245,8 +271,8 @@ function toStayLedgerRow(stay: Stay, state: LedgerState): StayLedgerRow {
     nights: stay.nights,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
-    business: stayCollectible(stay.id, state),
-    received: stayPayments(stay.id, state),
+    business,
+    received,
     pending,
     methods: [...new Set(payments.map((item) => methodLabel(item.method)))],
     receivedBy: [...new Set(payments.map((item) => receiverName(state, item.receivedById)))],
@@ -270,10 +296,10 @@ function toStayLedgerRow(stay: Stay, state: LedgerState): StayLedgerRow {
   };
 }
 
-export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFlat: string): StayLedgerRow[] {
+export function stayLedgerRows(state: LedgerState, range: DateRange, selectedFlat: string, asOf?: Date): StayLedgerRow[] {
   return state.stays
     .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && stayTouchesRange(stay, state, range))
-    .map((stay) => toStayLedgerRow(stay, state))
+    .map((stay) => toStayLedgerRow(stay, state, asOf))
     .sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1));
 }
 
@@ -337,10 +363,14 @@ export function paymentLedgerRows(
     });
 }
 
-export function pendingLedgerRows(state: LedgerState, selectedFlat: string): StayLedgerRow[] {
+export function pendingLedgerRows(state: LedgerState, selectedFlat: string, asOf?: Date): StayLedgerRow[] {
   return state.stays
-    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
-    .map((stay) => toStayLedgerRow(stay, state))
+    .filter((stay) => {
+      if (!isLive(stay) || !matchesFlat(stay.flatId, selectedFlat)) return false;
+      if (asOf) return stayCountsTowardClosingPending(stay, state, asOf);
+      return isStayPendingActive(stay, state);
+    })
+    .map((stay) => toStayLedgerRow(stay, state, asOf))
     .sort((a, b) => b.pending - a.pending);
 }
 
@@ -348,8 +378,19 @@ export function dashboardTotals(
   state: LedgerState,
   range: DateRange,
   selectedFlat: string,
+  now = new Date(),
 ): DashboardTotals {
   const period = operationalTotals(state, range, selectedFlat);
+  const historical = range.to < startOfToday(now);
+  if (historical) {
+    return {
+      business: period.business,
+      received: period.received,
+      pending: outstandingAsOf(state, range.to, selectedFlat),
+      expenses: period.expenses,
+      carriedForward: 0,
+    };
+  }
   return {
     business: period.business,
     received: period.received,
@@ -364,16 +405,18 @@ export function operationalReconciled(
   range: DateRange,
   selectedFlat: string,
   totals: DashboardTotals,
+  now = new Date(),
 ): boolean {
+  const historical = range.to < startOfToday(now);
+  const asOf = historical ? range.to : undefined;
   const payments = paymentLedgerRows(state, range, selectedFlat);
   const expenses = expenseLedgerRows(state, range, selectedFlat);
-  const pending = pendingLedgerRows(state, selectedFlat);
+  const pending = pendingLedgerRows(state, selectedFlat, asOf);
   return (
     totals.business === operationalTotals(state, range, selectedFlat).business &&
     totals.received === payments.reduce((sum, item) => sum + item.amount, 0) &&
     totals.pending === pending.reduce((sum, item) => sum + item.pending, 0) &&
-    totals.expenses === expenses.reduce((sum, item) => sum + item.amount, 0) &&
-    totals.carriedForward === operationalTotals(state, range, selectedFlat).carriedForward
+    totals.expenses === expenses.reduce((sum, item) => sum + item.amount, 0)
   );
 }
 
@@ -397,9 +440,13 @@ export function availableForWithdrawal(state: LedgerState): number {
   return Math.max(0, received - expenses - withdrawals);
 }
 
-export function needsAttention(state: LedgerState, selectedFlat = "all"): AttentionItem[] {
+export function needsAttention(state: LedgerState, selectedFlat = "all", asOf?: Date): AttentionItem[] {
   return state.stays
-    .filter((stay) => isLive(stay) && matchesFlat(stay.flatId, selectedFlat) && isStayPendingActive(stay, state))
+    .filter((stay) => {
+      if (!isLive(stay) || !matchesFlat(stay.flatId, selectedFlat)) return false;
+      if (asOf) return stayBalanceAsOf(stay.id, state, asOf) > 0 && new Date(stay.checkIn) <= asOf;
+      return isStayPendingActive(stay, state);
+    })
     .map((stay) => {
       const client = state.clients.find((item) => item.id === stay.clientId);
       return {
@@ -407,7 +454,7 @@ export function needsAttention(state: LedgerState, selectedFlat = "all"): Attent
         clientId: stay.clientId,
         clientName: client?.name ?? "Customer",
         phone: client?.phone ?? null,
-        remaining: stayRemaining(stay.id, state),
+        remaining: asOf ? stayBalanceAsOf(stay.id, state, asOf) : stayRemaining(stay.id, state),
         flat: flatName(state, stay.flatId),
         checkOut: stay.checkOut,
       };

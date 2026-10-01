@@ -183,11 +183,46 @@ export async function ensureCorrectionsSchema(pool: Pool): Promise<void> {
   }
 }
 
+export async function ensureFlatManagementSchema(pool: Pool): Promise<void> {
+  if (!(await tableExists(pool, "flats"))) return;
+  if (!(await columnExists(pool, "flats", "displayName"))) {
+    await pool.query("ALTER TABLE flats ADD COLUMN displayName VARCHAR(191) NULL");
+  }
+  if (!(await columnExists(pool, "flats", "active"))) {
+    await pool.query("ALTER TABLE flats ADD COLUMN active TINYINT(1) NOT NULL DEFAULT 1");
+  }
+  if (!(await columnExists(pool, "flats", "archivedAt"))) {
+    await pool.query("ALTER TABLE flats ADD COLUMN archivedAt DATETIME(3) NULL");
+  }
+  if (!(await columnExists(pool, "flats", "updatedAt"))) {
+    await pool.query("ALTER TABLE flats ADD COLUMN updatedAt DATETIME(3) NULL");
+  }
+  if (await tableExists(pool, "payments") && !(await indexExists(pool, "payments", "payments_receivedAt_idx"))) {
+    await pool.query("ALTER TABLE payments ADD KEY payments_receivedAt_idx (receivedAt)");
+  }
+  if (await tableExists(pool, "expenses") && !(await indexExists(pool, "expenses", "expenses_spentAt_idx"))) {
+    await pool.query("ALTER TABLE expenses ADD KEY expenses_spentAt_idx (spentAt)");
+  }
+  if (await tableExists(pool, "business_entries") && !(await indexExists(pool, "business_entries", "business_entries_flatId_idx"))) {
+    await pool.query("ALTER TABLE business_entries ADD KEY business_entries_flatId_idx (flatId)");
+  }
+  if (await tableExists(pool, "business_entries") && !(await indexExists(pool, "business_entries", "business_entries_occurredAt_idx"))) {
+    await pool.query("ALTER TABLE business_entries ADD KEY business_entries_occurredAt_idx (occurredAt)");
+  }
+  if (await tableExists(pool, "payments") && !(await indexExists(pool, "payments", "payments_flatId_idx"))) {
+    await pool.query("ALTER TABLE payments ADD KEY payments_flatId_idx (flatId)");
+  }
+  if (await tableExists(pool, "expenses") && !(await indexExists(pool, "expenses", "expenses_flatId_idx"))) {
+    await pool.query("ALTER TABLE expenses ADD KEY expenses_flatId_idx (flatId)");
+  }
+}
+
 export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResult> {
   await ensureReceiversSchema(pool);
   await ensureCorrectionsSchema(pool);
   await ensureMonthlyReportsSchema(pool);
   await ensureReceiptsSchema(pool);
+  await ensureFlatManagementSchema(pool);
   const result = await runCleanStartIfNeeded(pool);
   if (result.ran) {
     console.info("ANAS_CLEAN_START", JSON.stringify(result));

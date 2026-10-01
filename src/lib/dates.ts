@@ -81,6 +81,7 @@ export function formatMonthLabel(year: number, month: number): string {
 export function periodLabel(preset: DateFilterPreset, range: DateRange): string {
   if (preset === "today") return "Today";
   if (preset === "7days") return "Last 7 days";
+  if (preset === "all") return "All Time";
   const from = karachiYmd(range.from);
   const to = karachiYmd(range.to);
   if (preset === "month" || (from.year === to.year && from.month === to.month && from.day === 1 && to.day >= 28)) {
@@ -102,6 +103,14 @@ export function rangeForPreset(
   custom: DateRange | null,
   now = new Date(),
 ): DateRange {
+  if (preset === "all") {
+    const today = karachiYmd(now);
+    return {
+      from: karachiStartOfDay(2015, 1, 1),
+      to: karachiEndOfDay(today.year, today.month, today.day),
+    };
+  }
+
   if (preset === "custom" && custom) {
     const from = karachiYmd(custom.from);
     const to = karachiYmd(custom.to);

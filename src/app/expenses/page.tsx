@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { formatDate } from "@/lib/dates";
+import { activeFlats, defaultFlatName } from "@/lib/flats";
 import { flatName } from "@/lib/ledger";
 import { formatPKR, methodLabel, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
@@ -19,7 +20,7 @@ export default function ExpensesPage() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0].value);
   const [method, setMethod] = useState(PAYMENT_METHODS[0].value);
-  const [flat, setFlat] = useState(state.flats[0]?.name ?? "");
+  const [flat, setFlat] = useState(defaultFlatName(state));
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -77,7 +78,7 @@ export default function ExpensesPage() {
           ))}
         </select>
         <select className="w-full rounded-xl border border-border bg-input px-3 text-base" value={flat} onChange={(event) => setFlat(event.target.value)}>
-          {state.flats.map((item) => (
+          {activeFlats(state).map((item) => (
             <option key={item.id} value={item.name}>{item.name}</option>
           ))}
         </select>

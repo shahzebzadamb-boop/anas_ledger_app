@@ -7,6 +7,7 @@ const presets: { value: DateFilterPreset; label: string }[] = [
   { value: "today", label: "Today" },
   { value: "7days", label: "7 Days" },
   { value: "month", label: "This Month" },
+  { value: "all", label: "All Time" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -18,6 +19,7 @@ export function DateFilter({
   custom,
   onPreset,
   onCustom,
+  hidePresets = false,
 }: {
   flats: Flat[];
   selectedFlat: string;
@@ -26,6 +28,7 @@ export function DateFilter({
   custom: DateRange;
   onPreset: (value: DateFilterPreset) => void;
   onCustom: (value: DateRange) => void;
+  hidePresets?: boolean;
 }) {
   return (
     <div className="min-w-0 space-y-2.5">
@@ -39,29 +42,33 @@ export function DateFilter({
           </Chip>
         ))}
       </div>
-      <div className="flex flex-wrap gap-2">
-        {presets.map((item) => (
-          <Chip key={item.value} active={preset === item.value} onClick={() => onPreset(item.value)}>
-            {item.label}
-          </Chip>
-        ))}
-      </div>
-      {preset === "custom" ? (
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            type="date"
-            className="rounded-xl border border-border bg-input px-3 text-base"
-            value={toInput(custom.from)}
-            onChange={(event) => onCustom({ ...custom, from: new Date(event.target.value) })}
-          />
-          <input
-            type="date"
-            className="rounded-xl border border-border bg-input px-3 text-base"
-            value={toInput(custom.to)}
-            onChange={(event) => onCustom({ ...custom, to: new Date(event.target.value) })}
-          />
-        </div>
-      ) : null}
+      {hidePresets ? null : (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {presets.map((item) => (
+              <Chip key={item.value} active={preset === item.value} onClick={() => onPreset(item.value)}>
+                {item.label}
+              </Chip>
+            ))}
+          </div>
+          {preset === "custom" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                className="rounded-xl border border-border bg-input px-3 text-base"
+                value={toInput(custom.from)}
+                onChange={(event) => onCustom({ ...custom, from: new Date(event.target.value) })}
+              />
+              <input
+                type="date"
+                className="rounded-xl border border-border bg-input px-3 text-base"
+                value={toInput(custom.to)}
+                onChange={(event) => onCustom({ ...custom, to: new Date(event.target.value) })}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

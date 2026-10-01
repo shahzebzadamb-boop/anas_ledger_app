@@ -77,10 +77,45 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
     );
   }
 
+  const beforeFlats = ids(before.flats);
   for (const flat of after.flats) {
+    if (!beforeFlats.has(flat.id)) {
+      await connection.execute(
+        `INSERT INTO flats (id, createdAt, name, sortOrder, displayName, active, archivedAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), sortOrder = VALUES(sortOrder), displayName = VALUES(displayName),
+           active = VALUES(active), archivedAt = VALUES(archivedAt), updatedAt = VALUES(updatedAt)`,
+        [
+          flat.id,
+          toSqlDate(flat.createdAt),
+          flat.name,
+          flat.sortOrder,
+          flat.displayName,
+          flat.active ? 1 : 0,
+          toSqlDate(flat.archivedAt),
+          toSqlDate(flat.updatedAt),
+        ],
+      );
+      continue;
+    }
     const delta = changed(before.flats, after.flats, flat.id);
     if (!delta) continue;
-    await connection.execute("UPDATE flats SET name = ? WHERE id = ?", [flat.name, flat.id]);
+    await connection.execute(
+      "UPDATE flats SET name = ?, sortOrder = ?, displayName = ?, active = ?, archivedAt = ?, updatedAt = ? WHERE id = ?",
+      [
+        flat.name,
+        flat.sortOrder,
+        flat.displayName,
+        flat.active ? 1 : 0,
+        toSqlDate(flat.archivedAt),
+        toSqlDate(flat.updatedAt),
+        flat.id,
+      ],
+    );
+  }
+  for (const flat of before.flats) {
+    if (after.flats.some((item) => item.id === flat.id)) continue;
+    await connection.execute("DELETE FROM flats WHERE id = ?", [flat.id]);
   }
 
   const beforeStays = ids(before.stays);

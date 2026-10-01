@@ -45,6 +45,7 @@ export type PaymentDraft = {
   method: PaymentMethod;
   receivedByName: string;
   stayId?: string | null;
+  receivedAt?: string;
 };
 
 export type ExpenseDraft = {
@@ -54,6 +55,7 @@ export type ExpenseDraft = {
   description: string;
   category: ExpenseCategory;
   flat: string | null;
+  spentAt?: string;
 };
 
 export type SecurityDraft = {
@@ -112,10 +114,40 @@ export type ParsedQuickEntry =
 
 export type ParseContext = {
   knownClients?: { name: string; phone: string | null }[];
+  knownFlats?: string[];
   now?: Date;
 };
 
-const KNOWN_FLATS = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;
+export function normalizeFlatName(value: string): string {
+  const compact = value.replace(/[\s-]+/g, "").toUpperCase();
+  const match = compact.match(/^(\d{3})([A-Z])$/);
+  if (match) return `${match[1]}-${match[2]}`;
+  return value.replace(/\s+/g, "").replace(/(\d{3})-?([A-Za-z])/i, (_, n, l) => `${n}-${String(l).toUpperCase()}`);
+}
+
+export function detectFlat(text: string, knownFlats: string[] = []): string | null {
+  const labeled = text.match(/\bflat\s+([A-Za-z0-9-]+)/i);
+  if (labeled?.[1]) {
+    return matchKnownOrPattern(labeled[1], knownFlats);
+  }
+  const loose = text.match(/\b(\d{3})\s*-?\s*([A-Za-z])\b/);
+  if (loose) {
+    return matchKnownOrPattern(`${loose[1]}${loose[2]}`, knownFlats);
+  }
+  const compact = text.toUpperCase().replace(/[\s-]+/g, " ");
+  for (const name of knownFlats) {
+    const needle = name.replace(/[\s-]+/g, "").toUpperCase();
+    if (needle && compact.replace(/[\s-]+/g, "").includes(needle)) return normalizeFlatName(name);
+  }
+  return null;
+}
+
+function matchKnownOrPattern(raw: string, knownFlats: string[]): string | null {
+  const flat = normalizeFlatName(raw);
+  if (knownFlats.length === 0) return flat;
+  const found = knownFlats.find((name) => normalizeFlatName(name) === flat);
+  return found ?? flat;
+}
 
 const RECEIVED_RE =
   /\b(received|receive|recive|recived|wasol|wasool|mila|mil\s+gaya|mil\s+gya|aya|aaya|amount\s+aya|payment\s+aya|paid|full\s+paid|clear|settled|advance|lia|liya)\b/i;
@@ -165,29 +197,6 @@ function detectMethod(text: string): PaymentMethod {
     if (item.pattern.test(text)) return item.method;
   }
   return "CASH";
-}
-
-export function normalizeFlatName(value: string): string {
-  const compact = value.replace(/[\s-]+/g, "").toUpperCase();
-  const match = compact.match(/^(\d{3})([A-Z])$/);
-  if (match) return `${match[1]}-${match[2]}`;
-  return value.replace(/\s+/g, "").replace(/(\d{3})-?([A-Za-z])/i, (_, n, l) => `${n}-${String(l).toUpperCase()}`);
-}
-
-export function detectFlat(text: string): string | null {
-  const labeled = text.match(/\bflat\s+([A-Za-z0-9-]+)/i);
-  if (labeled?.[1]) {
-    const flat = normalizeFlatName(labeled[1]);
-    if ((KNOWN_FLATS as readonly string[]).includes(flat)) return flat;
-    return flat;
-  }
-  const loose = text.match(/\b(\d{3})\s*-?\s*([A-Za-z])\b/);
-  if (loose) {
-    const flat = normalizeFlatName(`${loose[1]}${loose[2]}`);
-    if ((KNOWN_FLATS as readonly string[]).includes(flat)) return flat;
-    return flat;
-  }
-  return null;
 }
 
 function detectPhone(text: string): string | null {
@@ -260,10 +269,10 @@ function amounts(text: string, flat: string | null): number[] {
   });
 }
 
-function amountAfter(text: string, keyword: RegExp): number | null {
+function amountAfter(text: string, keyword: RegExp, knownFlats: string[] = []): number | null {
   const match = text.match(keyword);
   if (!match || match.index === undefined) return null;
-  const flat = detectFlat(text);
+  const flat = detectFlat(text, knownFlats);
   const flatNumber = flat ? Number(flat.replace(/-[A-Z]$/i, "")) : null;
   const dayCount = Number(text.match(DAYS_RE)?.[1] ?? 0) || null;
   const skip = (value: number) =>
@@ -345,7 +354,7 @@ export function parseQuickEntry(
     return parseCorrection(text, ctx);
   }
   const now = startOfDay(ctx.now ?? new Date());
-  const flat = detectFlat(text);
+  const flat = detectFlat(text, ctx.knownFlats ?? []);
   const phone = detectPhone(text);
   const receivedByName = detectReceiverName(text);
   const clientName = detectName(stripReceiverForNameDetection(text), ctx.knownClients ?? []);
@@ -371,6 +380,7 @@ export function parseQuickEntry(
       description: meta.label,
       category: meta.category,
       flat,
+      spentAt: now.toISOString(),
     };
   }
 
@@ -427,7 +437,7 @@ export function parseQuickEntry(
     if (!clientName || !amount) {
       return { type: "ambiguous", reason: humanAmbiguous(money, flat, "Add the customer and payment amount.") };
     }
-    return { type: "payment", clientName, phone, flat, amount, method, receivedByName };
+    return { type: "payment", clientName, phone, flat, amount, method, receivedByName, receivedAt: now.toISOString() };
   }
 
   if (type === "RENT") {

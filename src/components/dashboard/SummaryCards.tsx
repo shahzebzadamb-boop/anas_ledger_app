@@ -18,6 +18,8 @@ export function SummaryCards({
   preset,
   from,
   to,
+  year,
+  month,
   periodLabel,
   showCarryForward,
 }: {
@@ -26,6 +28,8 @@ export function SummaryCards({
   preset: DateFilterPreset;
   from?: string;
   to?: string;
+  year?: number;
+  month?: number;
   periodLabel?: string;
   showCarryForward?: boolean;
 }) {
@@ -39,7 +43,7 @@ export function SummaryCards({
         {cards.map((card) => (
           <Link
             key={card.key}
-            href={ledgerHref({ view: card.key, flat, preset, from, to })}
+            href={ledgerHref({ view: card.key, flat, preset, from, to, year, month })}
             className="rounded-2xl border border-border bg-surface p-3"
           >
             <p className="card-label">{card.label}</p>
