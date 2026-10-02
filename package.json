@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/write-build-info.mjs && next dev",
-    "build": "node scripts/write-build-info.mjs && next build",
+    "dev": "next dev",
+    "build": "node scripts/write-build-info.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "validate:db": "node scripts/validate_mysql.mjs"
