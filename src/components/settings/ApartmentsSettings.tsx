@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Sheet } from "@/components/ui/Sheet";
@@ -14,9 +14,20 @@ import {
 } from "@/lib/flats";
 import { useLedger } from "@/lib/store";
 
-export function ApartmentsSettings() {
+export function ApartmentsSettings({
+  addOpen,
+  onAddOpenChange,
+}: {
+  addOpen?: boolean;
+  onAddOpenChange?: (open: boolean) => void;
+}) {
   const { state, persist } = useLedger();
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = addOpen ?? localOpen;
+  function setOpen(next: boolean) {
+    setLocalOpen(next);
+    onAddOpenChange?.(next);
+  }
   const [code, setCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +36,10 @@ export function ApartmentsSettings() {
   const active = useMemo(() => activeFlats(state), [state]);
   const archived = useMemo(() => archivedFlats(state), [state]);
   const editing = state.flats.find((flat) => flat.id === editId) ?? null;
+
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
 
   async function addApartment() {
     const name = normalizeFlatCode(code);
@@ -88,7 +103,15 @@ export function ApartmentsSettings() {
         ))}
         {active.length === 0 ? <p className="text-sm font-normal text-muted">No active apartments.</p> : null}
       </Card>
-      <Button onClick={() => { setError(null); setOpen(true); }}>+ Add Apartment</Button>
+      <Button
+        variant="primary"
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
+      >
+        + Add Property
+      </Button>
       {archived.length > 0 ? (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-muted">Archived</h3>
@@ -106,7 +129,7 @@ export function ApartmentsSettings() {
       ) : null}
 
       {open ? (
-        <Sheet title="Add Apartment" onClose={() => setOpen(false)}>
+        <Sheet title="Add Property" onClose={() => setOpen(false)}>
           {error ? <p className="mb-3 text-sm text-warning">{error}</p> : null}
           <label className="block text-sm font-medium">
             Apartment / Flat Number *
@@ -117,7 +140,7 @@ export function ApartmentsSettings() {
             <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Centaurus 912-C" />
           </label>
           <Button className="mt-4" variant="primary" onClick={() => void addApartment()}>
-            Add Apartment
+            Add Property
           </Button>
         </Sheet>
       ) : null}
