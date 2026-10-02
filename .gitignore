@@ -49,3 +49,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated at build time; src/generated/build-info.json is committed as a fallback
+/public/build-info.json
