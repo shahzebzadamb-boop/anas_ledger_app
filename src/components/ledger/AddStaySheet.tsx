@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
+import { ClientIdentityFields } from "@/components/clients/ClientIdentityFields";
 import { dateInputToISO, formatDateShort, karachiDateInput, nightsBetween } from "@/lib/dates";
 import { activeFlats, defaultFlatName } from "@/lib/flats";
 import { formatPKR, parseFormAmount } from "@/lib/money";
@@ -154,6 +155,14 @@ export function AddStaySheet({
         </div>
       ) : (
         <div className="space-y-3">
+          <form
+            className="space-y-3"
+            autoComplete="on"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
           <Field label="Flat *">
             <select className={fieldClass} value={flat} onChange={(event) => setFlat(event.target.value)}>
               {activeFlats(state).map((item) => (
@@ -163,28 +172,13 @@ export function AddStaySheet({
               ))}
             </select>
           </Field>
-          <Field label="Client name *">
-            <input
-              type="text"
-              autoComplete="name"
-              autoCapitalize="words"
-              className={fieldClass}
-              value={clientName}
-              onChange={(event) => setClientName(event.target.value)}
-              placeholder="Tufail Khan"
-            />
-          </Field>
-          <Field label="Phone number *">
-            <input
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              className={fieldClass}
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              placeholder="03001234567"
-            />
-          </Field>
+          <ClientIdentityFields
+            name={clientName}
+            phone={phone}
+            state={state}
+            onNameChange={setClientName}
+            onPhoneChange={setPhone}
+          />
           <div className="grid grid-cols-2 gap-2">
             <Field label="Check-in *">
               <input
@@ -310,9 +304,10 @@ export function AddStaySheet({
               <MoneyLine label="Security" value={security} />
             </div>
           </div>
-          <Button variant="primary" className="w-full" disabled={saving} onClick={() => void save()}>
+          <Button type="submit" variant="primary" className="w-full" disabled={saving}>
             Add Stay
           </Button>
+          </form>
         </div>
       )}
     </Sheet>

@@ -13,7 +13,7 @@ import {
   stayCountsTowardClosingPending,
 } from "@/lib/month-accounting";
 import { formatPKR, isPlausibleLedgerAmount, methodLabel } from "@/lib/money";
-import { normalizePhone } from "@/lib/phone";
+import { displayPhone, normalizePhone, samePhone } from "@/lib/phone";
 
 export function isLive<T extends { voided?: boolean }>(item: T): boolean {
   return !item.voided;
@@ -100,12 +100,35 @@ function matchesClient(
   phone: string | null,
 ): LedgerState["clients"][number] | null {
   if (phone) {
-    const byPhone = state.clients.find((client) => client.phone === phone);
+    const byPhone = state.clients.find((client) => samePhone(client.phone, phone));
     if (byPhone) return byPhone;
   }
   return (
     state.clients.find((client) => client.name.toLowerCase() === name.trim().toLowerCase()) ?? null
   );
+}
+
+export function findClientByPhone(state: LedgerState, raw: string | null | undefined) {
+  const phone = normalizePhone(raw);
+  if (!phone) return null;
+  return state.clients.find((client) => samePhone(client.phone, phone)) ?? null;
+}
+
+export function suggestClients(state: LedgerState, query: string) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const digits = q.replace(/\D/g, "");
+  return state.clients
+    .filter((client) => {
+      if (client.name.toLowerCase().includes(q)) return true;
+      if (digits.length >= 3) {
+        const phoneDigits = (client.phone ?? "").replace(/\D/g, "");
+        const local = displayPhone(client.phone).replace(/\D/g, "");
+        if (phoneDigits.includes(digits) || local.includes(digits)) return true;
+      }
+      return false;
+    })
+    .slice(0, 5);
 }
 
 export function matchClient(

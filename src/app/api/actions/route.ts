@@ -10,6 +10,7 @@ const WRITE_TYPES = new Set<Action["type"]>([
   "ADD_EXPENSE",
   "APPLY_QUICK_ENTRY",
   "SET_CLIENT_PHONE",
+  "ADD_CLIENT",
   "RENAME_FLAT",
   "ADD_FLAT",
   "UPDATE_FLAT",

@@ -12,8 +12,11 @@ import {
   stayRemaining,
   totalsMatchStayLedger,
   uniquePaymentStayId,
+  findClientByPhone,
 } from "../src/lib/ledger";
 import { reducer } from "../src/lib/ledger-actions";
+import { cleanContactName, uniqueContactPhones } from "../src/lib/contact-picker";
+import { normalizePhone, samePhone } from "../src/lib/phone";
 import { parseAmountToken, parseFormAmount, sanitizeMoneyInput, moneyInputFromSaved } from "../src/lib/money";
 import { pendingNotice } from "../src/lib/notifications";
 import {
@@ -1318,6 +1321,52 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
     console.error("FLAT CODE LOCK FAIL", slashFlat, slashParsed, blockedRename.flats.find((item) => item.id === "flat_204-D"), unusedRename.flats);
   } else {
     console.log("OK 703/704 normalize, quick entry, and history-locked rename");
+  }
+}
+
+{
+  const phones = [
+    normalizePhone("03001234567"),
+    normalizePhone("+923001234567"),
+    normalizePhone("00923001234567"),
+    normalizePhone("0300 1234567"),
+    normalizePhone("0300-1234567"),
+    normalizePhone("(0300) 1234567"),
+  ];
+  const unique = uniqueContactPhones(["03001234567", "+92 300 1234567", "03331234567"]);
+  let book = emptyLedgerState();
+  book = reducer(book, { type: "ADD_CLIENT", payload: { name: "Tufail Khan", phone: "03001234567" } });
+  const existing = findClientByPhone(book, "+923001234567");
+  const renamed = reducer(book, { type: "ADD_CLIENT", payload: { name: "Tufail Office", phone: "+923001234567" } });
+  const stay = reducer(book, {
+    type: "ADD_STAY",
+    payload: {
+      flat: "802-A",
+      clientName: "Tufail Office",
+      phone: "+923001234567",
+      checkIn: "2026-10-03T00:00:00+05:00",
+      checkOut: "2026-10-04T00:00:00+05:00",
+      nights: 1,
+      business: 10000,
+      received: 0,
+    },
+  });
+  if (
+    phones.some((item) => item !== "923001234567") ||
+    unique.length !== 2 ||
+    !existing ||
+    existing.name !== "Tufail Khan" ||
+    renamed.clients.filter((item) => samePhone(item.phone, "03001234567")).length !== 1 ||
+    stay.clients.filter((item) => samePhone(item.phone, "03001234567")).length !== 1 ||
+    stay.clients.find((item) => samePhone(item.phone, "03001234567"))?.name !== "Tufail Khan" ||
+    cleanContactName("undefined") !== "" ||
+    cleanContactName(" Tufail Khan ") !== "Tufail Khan" ||
+    parseFormAmount("03001234567") !== null
+  ) {
+    failed += 1;
+    console.error("CONTACT PHONE FAIL", phones, unique, existing, renamed.clients.length, stay.clients.find((item) => samePhone(item.phone, "03001234567")));
+  } else {
+    console.log("OK contact phone normalize, reuse existing client, skip duplicate");
   }
 }
 

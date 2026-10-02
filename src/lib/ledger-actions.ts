@@ -72,6 +72,7 @@ export type Action =
     }
   | { type: "APPLY_QUICK_ENTRY"; parsed: ConfirmableDraft }
   | { type: "SET_CLIENT_PHONE"; clientId: string; phone: string }
+  | { type: "ADD_CLIENT"; payload: { name: string; phone: string } }
   | { type: "RENAME_FLAT"; flatId: string; name: string }
   | { type: "ADD_FLAT"; payload: { name: string; displayName?: string | null } }
   | { type: "UPDATE_FLAT"; payload: { flatId: string; displayName?: string | null; name?: string } }
@@ -183,7 +184,7 @@ function findClient(
   phone: string | null,
 ): { state: LedgerState; client: Client; isNew: boolean } {
   if (phone) {
-    const existing = state.clients.find((client) => client.phone === phone);
+    const existing = state.clients.find((client) => normalizePhone(client.phone) === phone);
     if (existing) return { state, client: existing, isNew: false };
   }
   const byName = state.clients.find(
@@ -687,6 +688,22 @@ function reducer(state: LedgerState, action: Action): LedgerState {
             : client,
         ),
       };
+    case "ADD_CLIENT": {
+      const name = action.payload.name.trim();
+      const phone = normalizePhone(action.payload.phone);
+      if (!name || !phone) return state;
+      const existing = state.clients.find((client) => normalizePhone(client.phone) === phone);
+      if (existing) return state;
+      const client: Client = {
+        id: createId("client"),
+        createdAt: nowISO(),
+        name,
+        phone,
+        phoneMissing: false,
+        notes: null,
+      };
+      return { ...state, clients: [client, ...state.clients] };
+    }
     case "RENAME_FLAT": {
       const nextName = normalizeFlatCode(action.name) ?? action.name.trim();
       const current = state.flats.find((flat) => flat.id === action.flatId);

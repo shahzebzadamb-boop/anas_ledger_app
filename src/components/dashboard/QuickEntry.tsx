@@ -23,6 +23,7 @@ import {
   type TransactionType,
 } from "@/lib/parse-quick-entry";
 import type { CorrectionDraft } from "@/lib/parse-correction";
+import { ClientIdentityFields } from "@/components/clients/ClientIdentityFields";
 import { useLedger } from "@/lib/store";
 import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
@@ -375,11 +376,16 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
             <p className="text-sm text-warning">No stay for this customer. Record rent first.</p>
           ) : null}
           {"needsPhone" in parsed && parsed.needsPhone ? (
-            <input
-              className="w-full rounded-xl border border-border bg-input px-3 text-base"
-              placeholder="Add customer number"
-              value={phonePrompt}
-              onChange={(event) => setPhonePrompt(event.target.value)}
+            <ClientIdentityFields
+              nameId="quick-entry-client-name"
+              phoneId="quick-entry-client-phone"
+              name={"clientName" in parsed ? parsed.clientName : ""}
+              phone={phonePrompt}
+              state={state}
+              onNameChange={(value) => {
+                if ("clientName" in parsed) setParsed({ ...parsed, clientName: value });
+              }}
+              onPhoneChange={setPhonePrompt}
             />
           ) : null}
           <div className="grid grid-cols-2 gap-2 pt-1">

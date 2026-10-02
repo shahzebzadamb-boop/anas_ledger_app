@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AddClientSheet } from "@/components/clients/AddClientSheet";
+import { Button } from "@/components/ui/Button";
 import { clientProfile } from "@/lib/ledger";
 import { displayPhone } from "@/lib/phone";
 import { formatPKR } from "@/lib/money";
@@ -17,11 +20,20 @@ function initials(name: string) {
 
 export default function ClientsPage() {
   const { state } = useLedger();
+  const [addOpen, setAddOpen] = useState(false);
   const clients = [...state.clients].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Clients" subtitle="Phone is the customer ID." />
+      <PageHeader
+        title="Clients"
+        subtitle="Phone is the customer ID."
+        actions={
+          <Button variant="primary" onClick={() => setAddOpen(true)}>
+            + Add Client
+          </Button>
+        }
+      />
       {clients.length === 0 ? (
         <p className="rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm font-normal text-muted">
           No clients yet.
@@ -56,6 +68,7 @@ export default function ClientsPage() {
           })}
         </div>
       )}
+      {addOpen ? <AddClientSheet onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
 }

@@ -16,7 +16,8 @@ import {
   stayRevenue,
 } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
-import { displayPhone } from "@/lib/phone";
+import { ClientIdentityFields } from "@/components/clients/ClientIdentityFields";
+import { displayPhone, normalizePhone } from "@/lib/phone";
 import { clientWhatsAppHref } from "@/lib/reminders";
 import { useLedger } from "@/lib/store";
 import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
@@ -60,24 +61,29 @@ export default function ClientDetailPage() {
           WhatsApp
         </a>
       ) : client.phone ? null : (
-        <div className="space-y-2">
-          <input
-            className="w-full rounded-xl border border-border bg-input px-3 text-base"
-            placeholder="Add customer number"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
+        <form
+          className="space-y-2"
+          autoComplete="on"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!normalizePhone(phone)) return;
+            void persist({ type: "SET_CLIENT_PHONE", clientId: client.id, phone }).then(() => setPhone(""));
+          }}
+        >
+          <ClientIdentityFields
+            nameId="missing-client-name"
+            phoneId="missing-client-phone"
+            name={client.name}
+            phone={phone}
+            state={state}
+            hideName
+            onNameChange={() => undefined}
+            onPhoneChange={setPhone}
           />
-          <Button
-            variant="primary"
-            className="w-full"
-            onClick={() => {
-              if (!phone.trim()) return;
-              void persist({ type: "SET_CLIENT_PHONE", clientId: client.id, phone }).then(() => setPhone(""));
-            }}
-          >
+          <Button type="submit" variant="primary" className="w-full">
             Save phone
           </Button>
-        </div>
+        </form>
       )}
 
       <div className="grid grid-cols-2 gap-2.5">
