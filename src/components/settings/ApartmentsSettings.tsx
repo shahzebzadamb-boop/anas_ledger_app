@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Sheet } from "@/components/ui/Sheet";
@@ -37,9 +37,12 @@ export function ApartmentsSettings({
   const archived = useMemo(() => archivedFlats(state), [state]);
   const editing = state.flats.find((flat) => flat.id === editId) ?? null;
 
-  useEffect(() => {
-    if (open) setError(null);
-  }, [open]);
+  function openAdd() {
+    setError(null);
+    setCode("");
+    setDisplayName("");
+    setOpen(true);
+  }
 
   async function addApartment() {
     const name = normalizeFlatCode(code);
@@ -65,14 +68,17 @@ export function ApartmentsSettings({
         <h2 className="section-title">Apartments</h2>
         <p className="mt-1 text-sm font-normal text-muted">Manage the apartments used in Anas Ledger</p>
       </div>
+      <Button variant="primary" className="w-full" onClick={openAdd}>
+        + Add Apartment
+      </Button>
       <Card className="space-y-2">
         {active.map((flat) => (
           <div key={flat.id} className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-b-0">
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium">{flat.name}</p>
               <p className="text-xs font-normal text-muted">{flat.displayName ?? "Active"}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <button
                 type="button"
                 className="min-h-11 text-sm font-medium text-secondary"
@@ -103,15 +109,6 @@ export function ApartmentsSettings({
         ))}
         {active.length === 0 ? <p className="text-sm font-normal text-muted">No active apartments.</p> : null}
       </Card>
-      <Button
-        variant="primary"
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
-      >
-        + Add Property
-      </Button>
       {archived.length > 0 ? (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-muted">Archived</h3>
@@ -129,7 +126,7 @@ export function ApartmentsSettings({
       ) : null}
 
       {open ? (
-        <Sheet title="Add Property" onClose={() => setOpen(false)}>
+        <Sheet title="Add Apartment" onClose={() => setOpen(false)}>
           {error ? <p className="mb-3 text-sm text-warning">{error}</p> : null}
           <label className="block text-sm font-medium">
             Apartment / Flat Number *
@@ -139,8 +136,8 @@ export function ApartmentsSettings({
             Display name (optional)
             <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Centaurus 912-C" />
           </label>
-          <Button className="mt-4" variant="primary" onClick={() => void addApartment()}>
-            Add Property
+          <Button className="mt-4 w-full" variant="primary" onClick={() => void addApartment()}>
+            Add Apartment
           </Button>
         </Sheet>
       ) : null}
@@ -157,7 +154,7 @@ export function ApartmentsSettings({
             <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={editDisplay} onChange={(event) => setEditDisplay(event.target.value)} />
           </label>
           <Button
-            className="mt-4"
+            className="mt-4 w-full"
             variant="primary"
             onClick={() => {
               void persist({ type: "UPDATE_FLAT", payload: { flatId: editing.id, displayName: editDisplay } });

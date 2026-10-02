@@ -1,4 +1,4 @@
-const CACHE = "anas-ledger-static-v5";
+const CACHE = "anas-ledger-static-v6";
 const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/logo-mark.png"];
 
 self.addEventListener("install", (event) => {
