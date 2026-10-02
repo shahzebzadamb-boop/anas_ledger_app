@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Calculator } from "lucide-react";
 import { DateFilter } from "@/components/dashboard/DateFilter";
 import { MonthFilter } from "@/components/dashboard/MonthFilter";
 import { NeedsAttention } from "@/components/dashboard/NeedsAttention";
@@ -59,35 +58,31 @@ export function Dashboard() {
         title="ANAS LEDGER"
         subtitle="Fast mobile cash notebook"
         logo
-        actions={
-          <Link
-            href="/calculator"
-            aria-label="Calculator"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-secondary"
-          >
-            <Calculator size={20} strokeWidth={1.8} />
-          </Link>
-        }
       />
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-normal text-secondary">
-        <Link href="/settings" className="min-h-11 inline-flex items-center">
+      <div className="flex gap-2 overflow-x-auto pb-0.5">
+        <Link href="/settings" className="chip chip-active">
           Settings
         </Link>
-        {reviewCount > 0 ? (
-          <Link href="/migration" className="min-h-11 inline-flex items-center text-warning">
-            Migration review ({reviewCount})
-          </Link>
-        ) : null}
-        {canUseBrowserNotifications() && Notification.permission !== "granted" ? (
-          <button
-            type="button"
-            className="min-h-11 text-secondary"
-            onClick={() => Notification.requestPermission()}
-          >
-            Enable reminders
-          </button>
-        ) : null}
+        <Link href="/calculator" className="chip chip-active">
+          Calculator
+        </Link>
+        <Link href="/ledger" className="chip chip-active">
+          Ledger
+        </Link>
+        <Link href="/reports/receipts" className="chip chip-active">
+          Receipts
+        </Link>
       </div>
+      {reviewCount > 0 ? (
+        <Link href="/migration" className="chip min-h-11 text-warning">
+          Migration review ({reviewCount})
+        </Link>
+      ) : null}
+      {canUseBrowserNotifications() && Notification.permission !== "granted" ? (
+        <button type="button" className="chip" onClick={() => Notification.requestPermission()}>
+          Enable reminders
+        </button>
+      ) : null}
       <MonthFilter period={period} onChange={setPeriod} state={state} />
       <SummaryCards
         totals={totals}
