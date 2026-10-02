@@ -1,6 +1,7 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ensureMonthlyReportsSchema } from "@/lib/server/monthly-reports";
 import { ensureReceiptsSchema } from "@/lib/server/receipts";
+import { repairAccidental204DRename } from "@/lib/server/repair-204d-rename";
 
 export const CLEAN_START_KEY = "clean_start_20260923";
 
@@ -223,6 +224,7 @@ export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResul
   await ensureMonthlyReportsSchema(pool);
   await ensureReceiptsSchema(pool);
   await ensureFlatManagementSchema(pool);
+  await repairAccidental204DRename(pool);
   const result = await runCleanStartIfNeeded(pool);
   if (result.ran) {
     console.info("ANAS_CLEAN_START", JSON.stringify(result));

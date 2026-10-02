@@ -9,10 +9,11 @@ import {
   archivedFlats,
   findFlatByCode,
   flatHasHistory,
-  isFlatActive,
   normalizeFlatCode,
 } from "@/lib/flats";
 import { useLedger } from "@/lib/store";
+
+const HISTORY_LOCK_MESSAGE = "This apartment has history. Add a new apartment instead.";
 
 export function ApartmentsSettings({
   addOpen,
@@ -32,22 +33,26 @@ export function ApartmentsSettings({
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editCode, setEditCode] = useState("");
   const [editDisplay, setEditDisplay] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
   const active = useMemo(() => activeFlats(state), [state]);
   const archived = useMemo(() => archivedFlats(state), [state]);
   const editing = state.flats.find((flat) => flat.id === editId) ?? null;
+  const editingLocked = editing ? flatHasHistory(state, editing.id) : false;
 
   function openAdd() {
     setError(null);
     setCode("");
     setDisplayName("");
+    setEditId(null);
     setOpen(true);
   }
 
   async function addApartment() {
     const name = normalizeFlatCode(code);
     if (!name) {
-      setError("Use a flat code like 912-C.");
+      setError("Use a flat code like 912-C or 703/704.");
       return;
     }
     const existing = findFlatByCode(state, name);
@@ -60,6 +65,28 @@ export function ApartmentsSettings({
     setCode("");
     setDisplayName("");
     setOpen(false);
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    setEditError(null);
+    if (editingLocked) {
+      await persist({ type: "UPDATE_FLAT", payload: { flatId: editing.id, displayName: editDisplay } });
+      setEditId(null);
+      return;
+    }
+    const nextName = normalizeFlatCode(editCode);
+    if (!nextName) {
+      setEditError("Use a flat code like 912-C or 703/704.");
+      return;
+    }
+    const existing = findFlatByCode(state, nextName);
+    if (existing && existing.id !== editing.id) {
+      setEditError(`${existing.name} already exists.`);
+      return;
+    }
+    await persist({ type: "UPDATE_FLAT", payload: { flatId: editing.id, name: nextName, displayName: editDisplay } });
+    setEditId(null);
   }
 
   return (
@@ -84,7 +111,9 @@ export function ApartmentsSettings({
                 className="min-h-11 text-sm font-medium text-secondary"
                 onClick={() => {
                   setEditId(flat.id);
+                  setEditCode(flat.name);
                   setEditDisplay(flat.displayName ?? "");
+                  setEditError(null);
                 }}
               >
                 Edit
@@ -130,7 +159,7 @@ export function ApartmentsSettings({
           {error ? <p className="mb-3 text-sm text-warning">{error}</p> : null}
           <label className="block text-sm font-medium">
             Apartment / Flat Number *
-            <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={code} onChange={(event) => setCode(event.target.value)} placeholder="912-C" />
+            <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={code} onChange={(event) => setCode(event.target.value)} placeholder="912-C or 703/704" />
           </label>
           <label className="mt-3 block text-sm font-medium">
             Display name (optional)
@@ -144,25 +173,42 @@ export function ApartmentsSettings({
 
       {editing ? (
         <Sheet title={`Edit ${editing.name}`} onClose={() => setEditId(null)}>
-          <p className="mb-3 text-sm font-normal text-muted">
-            {isFlatActive(editing) && flatHasHistory(state, editing.id)
-              ? "The apartment code stays locked because it has history."
-              : "Display name can be changed any time."}
-          </p>
-          <label className="block text-sm font-medium">
+          {editingLocked ? (
+            <p className="mb-3 text-sm font-normal text-muted">{HISTORY_LOCK_MESSAGE}</p>
+          ) : (
+            <p className="mb-3 text-sm font-normal text-muted">This unused apartment can be renamed. Archive old apartments instead of turning them into a new property.</p>
+          )}
+          {editError ? <p className="mb-3 text-sm text-warning">{editError}</p> : null}
+          {editingLocked ? (
+            <p className="mb-3 text-sm font-medium">
+              Apartment code
+              <span className="mt-1 block rounded-xl border border-border bg-input px-3 py-3 text-base font-medium text-muted">{editing.name}</span>
+            </p>
+          ) : (
+            <label className="block text-sm font-medium">
+              Apartment / Flat Number *
+              <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={editCode} onChange={(event) => setEditCode(event.target.value)} />
+            </label>
+          )}
+          <label className="mt-3 block text-sm font-medium">
             Display name
             <input className="mt-1 w-full rounded-xl border border-border bg-input px-3 text-base" value={editDisplay} onChange={(event) => setEditDisplay(event.target.value)} />
           </label>
-          <Button
-            className="mt-4 w-full"
-            variant="primary"
-            onClick={() => {
-              void persist({ type: "UPDATE_FLAT", payload: { flatId: editing.id, displayName: editDisplay } });
-              setEditId(null);
-            }}
-          >
+          <Button className="mt-4 w-full" variant="primary" onClick={() => void saveEdit()}>
             Save
           </Button>
+          {editingLocked ? (
+            <Button
+              className="mt-2 w-full"
+              variant="secondary"
+              onClick={() => {
+                setEditId(null);
+                openAdd();
+              }}
+            >
+              Add New Apartment
+            </Button>
+          ) : null}
         </Sheet>
       ) : null}
     </section>

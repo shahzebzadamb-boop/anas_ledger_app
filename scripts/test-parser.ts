@@ -1280,6 +1280,45 @@ if (!csv.includes("Business,500000") || !csv.includes("Tufail Khan")) {
   } else {
     console.log("OK apartment add/duplicate/quick-entry/archive/restore/delete-unused");
   }
+
+  const slashAdded = reducer(emptyLedgerState(), { type: "ADD_FLAT", payload: { name: "703-704" } });
+  const slashFlat = slashAdded.flats.find((item) => item.name === "703/704");
+  const slashParsed = parseQuickEntry("ali 703/704 1 din total 10k 10k easypaisa", {
+    knownFlats: slashAdded.flats.map((item) => item.name),
+    now: new Date("2026-10-03T12:00:00+05:00"),
+  });
+  const slashParsedSpace = detectFlat("703 704", ["703/704"]);
+  const slashParsedHyphen = detectFlat("703-704", ["703/704"]);
+  const used204 = reducer(emptyLedgerState(), {
+    type: "ADD_STAY",
+    payload: {
+      flat: "204-D",
+      clientName: "Test Guest",
+      phone: "03001112233",
+      checkIn: "2026-10-01T00:00:00+05:00",
+      checkOut: "2026-10-02T00:00:00+05:00",
+      nights: 1,
+      business: 10000,
+      received: 10000,
+    },
+  });
+  const blockedRename = reducer(used204, { type: "RENAME_FLAT", flatId: "flat_204-D", name: "703/704" });
+  const unusedRename = reducer(slashAdded, { type: "UPDATE_FLAT", payload: { flatId: "flat_703/704", name: "999-Z" } });
+  if (
+    !slashFlat ||
+    slashFlat.id !== "flat_703/704" ||
+    slashParsed.type !== "rent" ||
+    slashParsed.flat !== "703/704" ||
+    slashParsedSpace !== "703/704" ||
+    slashParsedHyphen !== "703/704" ||
+    blockedRename.flats.find((item) => item.id === "flat_204-D")?.name !== "204-D" ||
+    unusedRename.flats.find((item) => item.id === "flat_703/704")?.name !== "999-Z"
+  ) {
+    failed += 1;
+    console.error("FLAT CODE LOCK FAIL", slashFlat, slashParsed, blockedRename.flats.find((item) => item.id === "flat_204-D"), unusedRename.flats);
+  } else {
+    console.log("OK 703/704 normalize, quick entry, and history-locked rename");
+  }
 }
 
 if (failed) {

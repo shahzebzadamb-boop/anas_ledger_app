@@ -8,6 +8,7 @@ import {
   stripReceiverForNameDetection,
 } from "@/lib/receivers";
 import { looksLikeCorrection, parseCorrection, type CorrectionDraft } from "@/lib/parse-correction";
+import { normalizeFlatCode } from "@/lib/flats";
 import type { ExpenseCategory, PaymentMethod } from "@/types";
 
 export type TransactionType =
@@ -118,7 +119,13 @@ export type ParseContext = {
   now?: Date;
 };
 
+function flatMatchKey(value: string): string {
+  return (normalizeFlatCode(value) ?? value).replace(/[\s\-/]+/g, "").toUpperCase();
+}
+
 export function normalizeFlatName(value: string): string {
+  const canonical = normalizeFlatCode(value);
+  if (canonical) return canonical;
   const compact = value.replace(/[\s-]+/g, "").toUpperCase();
   const match = compact.match(/^(\d{3})([A-Z])$/);
   if (match) return `${match[1]}-${match[2]}`;
@@ -126,18 +133,22 @@ export function normalizeFlatName(value: string): string {
 }
 
 export function detectFlat(text: string, knownFlats: string[] = []): string | null {
-  const labeled = text.match(/\bflat\s+([A-Za-z0-9-]+)/i);
+  const labeled = text.match(/\bflat\s+([A-Za-z0-9/ -]+)/i);
   if (labeled?.[1]) {
     return matchKnownOrPattern(labeled[1], knownFlats);
+  }
+  const pair = text.match(/\b(\d{3})\s*[/\-]\s*(\d{3})\b/);
+  if (pair) {
+    return matchKnownOrPattern(`${pair[1]}/${pair[2]}`, knownFlats);
   }
   const loose = text.match(/\b(\d{3})\s*-?\s*([A-Za-z])\b/);
   if (loose) {
     return matchKnownOrPattern(`${loose[1]}${loose[2]}`, knownFlats);
   }
-  const compact = text.toUpperCase().replace(/[\s-]+/g, " ");
+  const compact = flatMatchKey(text);
   for (const name of knownFlats) {
-    const needle = name.replace(/[\s-]+/g, "").toUpperCase();
-    if (needle && compact.replace(/[\s-]+/g, "").includes(needle)) return normalizeFlatName(name);
+    const needle = flatMatchKey(name);
+    if (needle && compact.includes(needle)) return normalizeFlatName(name);
   }
   return null;
 }
@@ -145,7 +156,7 @@ export function detectFlat(text: string, knownFlats: string[] = []): string | nu
 function matchKnownOrPattern(raw: string, knownFlats: string[]): string | null {
   const flat = normalizeFlatName(raw);
   if (knownFlats.length === 0) return flat;
-  const found = knownFlats.find((name) => normalizeFlatName(name) === flat);
+  const found = knownFlats.find((name) => flatMatchKey(name) === flatMatchKey(flat));
   return found ?? flat;
 }
 

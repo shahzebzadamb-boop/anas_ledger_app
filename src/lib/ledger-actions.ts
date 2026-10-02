@@ -695,12 +695,7 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         return state;
       }
       if (flatHasHistory(state, action.flatId) && nextName !== current.name) {
-        return {
-          ...state,
-          flats: state.flats.map((flat) =>
-            flat.id === action.flatId ? { ...flat, displayName: nextName, updatedAt: nowISO() } : flat,
-          ),
-        };
+        return state;
       }
       return {
         ...state,

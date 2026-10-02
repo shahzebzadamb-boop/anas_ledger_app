@@ -3,10 +3,14 @@ import type { Flat, LedgerState } from "@/types";
 export const SEED_FLAT_NAMES = ["802-A", "408-B", "204-D", "204-C", "811-D", "815-B"] as const;
 
 export function normalizeFlatCode(value: string): string | null {
-  const compact = value.replace(/[\s-]+/g, "").toUpperCase();
-  const match = compact.match(/^(\d{3})([A-Z])$/);
-  if (!match) return null;
-  return `${match[1]}-${match[2]}`;
+  const raw = value.trim().toUpperCase();
+  if (!raw) return null;
+  const pair = raw.match(/^(\d{3})[\s/\-]+(\d{3})$/);
+  if (pair) return `${pair[1]}/${pair[2]}`;
+  const compact = raw.replace(/[\s-]+/g, "");
+  const letter = compact.match(/^(\d{3})([A-Z])$/);
+  if (!letter) return null;
+  return `${letter[1]}-${letter[2]}`;
 }
 
 export function flatIdForName(name: string): string {
@@ -28,7 +32,7 @@ export function archivedFlats(state: LedgerState): Flat[] {
 export function findFlatByCode(state: LedgerState, raw: string): Flat | null {
   const code = normalizeFlatCode(raw);
   if (!code) return null;
-  return state.flats.find((flat) => normalizeFlatCode(flat.name) === code) ?? null;
+  return state.flats.find((flat) => (normalizeFlatCode(flat.name) ?? flat.name) === code) ?? null;
 }
 
 export function flatHasHistory(state: LedgerState, flatId: string): boolean {
