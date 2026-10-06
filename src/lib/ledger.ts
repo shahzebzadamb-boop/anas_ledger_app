@@ -222,6 +222,7 @@ export type StayLedgerRow = {
   nights: number;
   checkIn: string;
   checkOut: string;
+  createdAt: string;
   business: number;
   received: number;
   pending: number;
@@ -294,6 +295,7 @@ function toStayLedgerRow(stay: Stay, state: LedgerState, asOf?: Date): StayLedge
     nights: stay.nights,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
+    createdAt: stay.createdAt,
     business,
     received,
     pending,

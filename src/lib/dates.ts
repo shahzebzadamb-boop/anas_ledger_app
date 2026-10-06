@@ -189,6 +189,29 @@ export function formatDateShort(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
+/** Compact Karachi wall time, e.g. "07 Oct 2026 · 2:18 AM". Returns null if invalid. */
+export function formatKarachiDateTime(isoDate: string | null | undefined): string | null {
+  if (!isoDate) return null;
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return null;
+  const dayPart = new Intl.DateTimeFormat("en-GB", {
+    timeZone: KARACHI,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: KARACHI,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(date)
+    .replace(/\u202f/g, " ");
+  if (!dayPart || !timePart) return null;
+  return `${dayPart} · ${timePart}`;
+}
+
 export function formatStayDates(checkIn: string, checkOut: string): string {
   return `${formatDateShort(checkIn)} – ${formatDateShort(checkOut)}`;
 }

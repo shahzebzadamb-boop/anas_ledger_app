@@ -20,7 +20,7 @@ export function RecentActivity({
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border bg-surface">
           {stays.map((row) => (
-            <StayLedgerCard key={row.stayId} row={row} showFlat={showFlat} />
+            <StayLedgerCard key={row.stayId} row={row} showFlat={showFlat} showEnteredAt />
           ))}
         </div>
       )}

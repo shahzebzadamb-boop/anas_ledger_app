@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowDownToLine } from "lucide-react";
-import { formatDate, formatStayDates } from "@/lib/dates";
+import { formatDate, formatKarachiDateTime, formatStayDates } from "@/lib/dates";
 import { formatPKR } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import { clientWhatsAppHref } from "@/lib/reminders";
@@ -30,6 +30,7 @@ export function StayLedgerCard({
   showPhone,
   showWhatsApp,
   showReceive,
+  showEnteredAt,
   showActions,
   onPaymentAdded,
 }: {
@@ -39,6 +40,7 @@ export function StayLedgerCard({
   showPhone?: boolean;
   showWhatsApp?: boolean;
   showReceive?: boolean;
+  showEnteredAt?: boolean;
   showActions?: boolean;
   onPaymentAdded?: (info?: AddedReceiptInfo) => void;
 }) {
@@ -54,6 +56,7 @@ export function StayLedgerCard({
     clientName: row.clientName,
     pendingAmount: row.pending,
   });
+  const enteredAt = showEnteredAt ? formatKarachiDateTime(row.createdAt) : null;
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -99,6 +102,13 @@ export function StayLedgerCard({
           <p className="mt-2 text-xs font-normal text-muted">
             {row.methods.join(" · ")}
             {row.receivedBy.length > 0 ? ` · Received by ${row.receivedBy.join(", ")}` : ""}
+          </p>
+        ) : null}
+        {enteredAt ? (
+          <p
+            className={`${row.methods.length > 0 ? "mt-0.5" : "mt-2"} text-[11px] font-normal leading-4 text-muted`}
+          >
+            {row.methods.length > 0 ? enteredAt : `Added ${enteredAt}`}
           </p>
         ) : null}
       </div>
