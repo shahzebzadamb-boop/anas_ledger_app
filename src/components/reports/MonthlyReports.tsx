@@ -34,6 +34,7 @@ function downloadBlob(blob: Blob, name: string) {
 
 async function monthPdf(report: MonthReportComputed) {
   const { buildReportPdf } = await import("@/lib/pdf");
+  const currentMonthReceived = Math.max(0, report.received - report.pendingCollected);
   const blob = buildReportPdf({
     periodLabel: report.label,
     totals: {
@@ -46,6 +47,9 @@ async function monthPdf(report: MonthReportComputed) {
     flats: report.flats,
     stays: report.totalStays,
     occupiedNights: report.totalNights,
+    currentMonthReceived,
+    puranaRecovered: report.pendingCollected,
+    netCashProfit: report.received - report.expenses,
   });
   return new File([blob], `anas-ledger-${report.year}-${String(report.month).padStart(2, "0")}.pdf`, {
     type: "application/pdf",
@@ -231,7 +235,9 @@ function InternalPreview({
         <p className="text-xs font-normal text-muted">Totals match the underlying ledger.</p>
       )}
       <Row label="New pending generated" value={formatPKR(report.newPendingGenerated)} />
-      <Row label="Pending collected" value={formatPKR(report.pendingCollected)} />
+      <Row label="Current month received" value={formatPKR(Math.max(0, report.received - report.pendingCollected))} />
+      <Row label="Purana Khata recovered" value={formatPKR(report.pendingCollected)} />
+      <Row label="Net cash profit" value={formatPKR(report.received - report.expenses)} />
       <Row label="Carried forward outstanding" value={formatPKR(report.carriedForward)} />
       <Row label="Closing outstanding" value={formatPKR(report.closingOutstanding)} />
       <Row label="Stays" value={String(report.totalStays)} />

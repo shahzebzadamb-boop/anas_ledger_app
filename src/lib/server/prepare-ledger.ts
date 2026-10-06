@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ensureMonthlyReportsSchema } from "@/lib/server/monthly-reports";
+import { ensureProfitShareSchema } from "@/lib/server/profit-share";
 import { ensureReceiptsSchema } from "@/lib/server/receipts";
 import { repairAccidental204DRename } from "@/lib/server/repair-204d-rename";
 
@@ -223,6 +224,7 @@ export async function prepareLedgerDatabase(pool: Pool): Promise<CleanStartResul
   await ensureCorrectionsSchema(pool);
   await ensureMonthlyReportsSchema(pool);
   await ensureReceiptsSchema(pool);
+  await ensureProfitShareSchema(pool);
   await ensureFlatManagementSchema(pool);
   await repairAccidental204DRename(pool);
   const result = await runCleanStartIfNeeded(pool);

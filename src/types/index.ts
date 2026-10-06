@@ -140,6 +140,20 @@ export type Withdrawal = {
   voided?: boolean;
 };
 
+export type ProfitSharePayment = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  profitYear: number;
+  profitMonth: number;
+  partnerName: string;
+  amount: number;
+  method: PaymentMethod;
+  paidAt: string;
+  note: string | null;
+  voided: boolean;
+};
+
 export type ActivityLog = {
   id: string;
   createdAt: string;
@@ -257,6 +271,7 @@ export type LedgerState = {
   nightSummaryDates: string[];
   monthlyReports: MonthlyReportRecord[];
   receipts: Receipt[];
+  profitSharePayments: ProfitSharePayment[];
 };
 
 export type DashboardTotals = {

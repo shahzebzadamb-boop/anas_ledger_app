@@ -424,6 +424,52 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
     );
   }
 
+  const beforeProfit = ids(before.profitSharePayments ?? []);
+  for (const item of after.profitSharePayments ?? []) {
+    if (!beforeProfit.has(item.id)) {
+      assertPlausibleAmount(item.amount, "Profit share");
+      await connection.execute(
+        `INSERT INTO profit_share_payments (
+           id, createdAt, updatedAt, profitYear, profitMonth, partnerName, amount, method, paidAt, note, voided
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          toSqlDate(item.createdAt),
+          toSqlDate(item.updatedAt),
+          item.profitYear,
+          item.profitMonth,
+          item.partnerName,
+          item.amount,
+          item.method,
+          toSqlDate(item.paidAt),
+          item.note,
+          item.voided ? 1 : 0,
+        ],
+      );
+      continue;
+    }
+    const delta = changed(before.profitSharePayments ?? [], after.profitSharePayments ?? [], item.id);
+    if (!delta) continue;
+    assertPlausibleAmount(item.amount, "Profit share");
+    await connection.execute(
+      `UPDATE profit_share_payments
+       SET updatedAt = ?, profitYear = ?, profitMonth = ?, partnerName = ?, amount = ?, method = ?, paidAt = ?, note = ?, voided = ?
+       WHERE id = ?`,
+      [
+        toSqlDate(item.updatedAt),
+        item.profitYear,
+        item.profitMonth,
+        item.partnerName,
+        item.amount,
+        item.method,
+        toSqlDate(item.paidAt),
+        item.note,
+        item.voided ? 1 : 0,
+        item.id,
+      ],
+    );
+  }
+
   const beforeActivity = ids(before.activityLogs);
   for (const item of after.activityLogs) {
     if (beforeActivity.has(item.id)) continue;

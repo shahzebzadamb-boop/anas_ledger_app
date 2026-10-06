@@ -307,6 +307,10 @@ export type PaymentLedgerRow = {
   notes: string | null;
 };
 
+export function stayLedgerRowFor(stay: Stay, state: LedgerState, asOf?: Date): StayLedgerRow {
+  return toStayLedgerRow(stay, state, asOf);
+}
+
 function toStayLedgerRow(stay: Stay, state: LedgerState, asOf?: Date): StayLedgerRow {
   const payments = state.payments
     .filter(

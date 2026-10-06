@@ -30,6 +30,8 @@ import {
   toMonthlyReportRecord,
 } from "../src/lib/month-accounting";
 import { allTimeRange, availableHomeMonths } from "../src/lib/home-period";
+import { monthEarnings } from "../src/lib/earnings";
+import { puranaKhataGroups } from "../src/lib/purana-khata";
 import {
   buildAnasPendingNotification,
   buildClientWhatsAppReminder,
@@ -1109,6 +1111,122 @@ if (
   console.error("OCT NEW STAY FAIL", octWithStay);
 } else {
   console.log("OK October new stay 60k/20k plus 30k carried forward");
+}
+
+{
+  const octNow = new Date("2026-10-06T12:00:00+05:00");
+  const groups = puranaKhataGroups(roll, { now: octNow });
+  const septGroup = groups.find((item) => item.year === 2026 && item.month === 9);
+  const octEarn = monthEarnings(roll, 2026, 10, octNow);
+  const septEarn = monthEarnings(roll, 2026, 9, octNow);
+  if (
+    !septGroup ||
+    septGroup.totalOutstanding !== 30000 ||
+    septGroup.rows.length !== 1 ||
+    septGroup.rows[0].clientName !== "Tufail Khan" ||
+    septGroup.rows[0].business !== 500000 ||
+    septGroup.rows[0].received !== 470000 ||
+    septGroup.rows[0].pending !== 30000 ||
+    groups.some((item) => item.year === 2026 && item.month === 10) ||
+    octEarn.currentReceived !== 20000 ||
+    octEarn.puranaRecovered !== 20000 ||
+    octEarn.totalCashReceived !== 40000 ||
+    octEarn.netCashProfit !== 40000 ||
+    octEarn.anasShare !== 20000 ||
+    octEarn.khizerShare !== 20000 ||
+    septEarn.currentReceived !== 450000 ||
+    septEarn.puranaRecovered !== 0 ||
+    septEarn.expenses !== 80000 ||
+    septEarn.netCashProfit !== 370000
+  ) {
+    failed += 1;
+    console.error("PURANA / EARNINGS FAIL", septGroup, octEarn, septEarn);
+  } else {
+    console.log("OK Purana Khata September leftover 30k, October cash split 20k current + 20k recovered");
+  }
+}
+
+{
+  let earn = emptyLedgerState();
+  earn = reducer(earn, {
+    type: "ADD_STAY",
+    payload: {
+      flat: "802-A",
+      clientName: "Cash Guest",
+      phone: "03001112222",
+      checkIn: "2026-10-02T00:00:00+05:00",
+      checkOut: "2026-10-05T00:00:00+05:00",
+      nights: 3,
+      business: 200000,
+      received: 200000,
+      method: "CASH",
+      receivedByName: "Anas",
+    },
+  });
+  earn = reducer(earn, {
+    type: "ADD_EXPENSE",
+    payload: {
+      amount: 60000,
+      category: "ELECTRICITY",
+      description: "Bill",
+      method: "CASH",
+      spentAt: "2026-10-10T00:00:00+05:00",
+    },
+  });
+  const beforePay = monthEarnings(earn, 2026, 10, new Date("2026-10-31T12:00:00+05:00"));
+  earn = reducer(earn, {
+    type: "RECORD_PROFIT_SHARE",
+    payload: {
+      profitYear: 2026,
+      profitMonth: 10,
+      amount: 30000,
+      method: "BANK_TRANSFER",
+      paidAt: "2026-10-31T20:15:00+05:00",
+      note: "First split payment",
+      partnerName: "Khizer",
+    },
+  });
+  earn = reducer(earn, {
+    type: "RECORD_PROFIT_SHARE",
+    payload: {
+      profitYear: 2026,
+      profitMonth: 10,
+      amount: 20000,
+      method: "CASH",
+      paidAt: "2026-11-03T16:10:00+05:00",
+      note: "Second",
+    },
+  });
+  const afterTwo = monthEarnings(earn, 2026, 10, new Date("2026-11-03T18:00:00+05:00"));
+  const firstId = earn.profitSharePayments[1]?.id ?? earn.profitSharePayments.find((item) => item.amount === 30000)?.id;
+  earn = reducer(earn, { type: "UNDO_ENTRY", payload: { entityType: "ProfitShare", entityId: firstId! } });
+  const afterUndo = monthEarnings(earn, 2026, 10, new Date("2026-11-03T18:00:00+05:00"));
+  const liveRow = earn.profitSharePayments.find((item) => !item.voided);
+  earn = reducer(earn, {
+    type: "UPDATE_PROFIT_SHARE",
+    payload: { id: liveRow!.id, amount: 25000 },
+  });
+  const afterEdit = monthEarnings(earn, 2026, 10, new Date("2026-11-03T18:00:00+05:00"));
+  const voidedKept = earn.profitSharePayments.some((item) => item.voided && item.amount === 30000);
+  if (
+    beforePay.netCashProfit !== 140000 ||
+    beforePay.anasShare !== 70000 ||
+    beforePay.khizerShare !== 70000 ||
+    afterTwo.khizerPaid !== 50000 ||
+    afterTwo.stillOwed !== 20000 ||
+    afterTwo.payments.length !== 2 ||
+    afterUndo.khizerPaid !== 20000 ||
+    afterUndo.payments.length !== 1 ||
+    afterEdit.khizerPaid !== 25000 ||
+    afterEdit.stillOwed !== 45000 ||
+    !voidedKept ||
+    earn.profitSharePayments.length !== 2
+  ) {
+    failed += 1;
+    console.error("PROFIT SHARE PAY FAIL", beforePay, afterTwo, afterUndo, afterEdit, earn.profitSharePayments);
+  } else {
+    console.log("OK Khizer split payments are additive, undo voids, expected share stays live");
+  }
 }
 
 const csv = buildMonthCsv(buildMonthReport(roll, 2026, 9, oct1));

@@ -24,6 +24,7 @@ import type {
   Payment,
   PaymentMethod,
   PendingDecision,
+  ProfitSharePayment,
   Receiver,
 } from "@/types";
 
@@ -132,7 +133,31 @@ export type Action =
       };
     }
   | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
-  | { type: "UNDO_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
+  | { type: "UNDO_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security" | "ProfitShare"; entityId: string } }
+  | {
+      type: "RECORD_PROFIT_SHARE";
+      payload: {
+        profitYear: number;
+        profitMonth: number;
+        amount: number;
+        method: PaymentMethod;
+        paidAt: string;
+        note?: string | null;
+        partnerName?: string;
+      };
+    }
+  | {
+      type: "UPDATE_PROFIT_SHARE";
+      payload: {
+        id: string;
+        amount?: number;
+        method?: PaymentMethod;
+        paidAt?: string;
+        note?: string | null;
+        profitYear?: number;
+        profitMonth?: number;
+      };
+    }
   | { type: "GENERATE_RECEIPT"; paymentId: string }
   | { type: "MARK_RECEIPT_SHARE_ATTEMPTED"; receiptId: string }
   | { type: "MARK_RECEIPT_SENT"; receiptId: string };
@@ -631,6 +656,12 @@ function normalizeState(state: LedgerState): LedgerState {
     withdrawals: (state.withdrawals ?? []).map((item) => ({ ...item, voided: item.voided ?? false })),
     monthlyReports: state.monthlyReports ?? [],
     receipts: state.receipts ?? [],
+    profitSharePayments: (state.profitSharePayments ?? []).map((item) => ({
+      ...item,
+      partnerName: item.partnerName || "Khizer",
+      note: item.note ?? null,
+      voided: item.voided ?? false,
+    })),
     reviews: state.reviews.map((item) => ({
       ...item,
       month: item.month ?? item.sourceSheet,
@@ -1003,6 +1034,68 @@ function reducer(state: LedgerState, action: Action): LedgerState {
       });
       return syncStayPending(next, row.stayId);
     }
+    case "RECORD_PROFIT_SHARE": {
+      const amount = action.payload.amount;
+      if (!isValidMoneyAmount(amount) || !isPlausibleLedgerAmount(amount)) return state;
+      const year = action.payload.profitYear;
+      const month = action.payload.profitMonth;
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) return state;
+      if (!Number.isInteger(month) || month < 1 || month > 12) return state;
+      const row: ProfitSharePayment = {
+        id: createId("psp"),
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        profitYear: year,
+        profitMonth: month,
+        partnerName: action.payload.partnerName?.trim() || "Khizer",
+        amount,
+        method: action.payload.method,
+        paidAt: action.payload.paidAt,
+        note: action.payload.note?.trim() || null,
+        voided: false,
+      };
+      return withAudit(
+        { ...state, profitSharePayments: [row, ...(state.profitSharePayments ?? [])] },
+        {
+          action: "MANUAL_EDIT",
+          entityType: "ProfitShare",
+          entityId: row.id,
+          originalValue: null,
+          newValue: row,
+          reason: "Record Khizer payment",
+        },
+      );
+    }
+    case "UPDATE_PROFIT_SHARE": {
+      const row = (state.profitSharePayments ?? []).find((item) => item.id === action.payload.id);
+      if (!row || row.voided) return state;
+      const amount = action.payload.amount ?? row.amount;
+      if (!isValidMoneyAmount(amount) || !isPlausibleLedgerAmount(amount)) return state;
+      const nextRow: ProfitSharePayment = {
+        ...row,
+        amount,
+        method: action.payload.method ?? row.method,
+        paidAt: action.payload.paidAt ?? row.paidAt,
+        note: action.payload.note === undefined ? row.note : action.payload.note?.trim() || null,
+        profitYear: action.payload.profitYear ?? row.profitYear,
+        profitMonth: action.payload.profitMonth ?? row.profitMonth,
+        updatedAt: nowISO(),
+      };
+      return withAudit(
+        {
+          ...state,
+          profitSharePayments: (state.profitSharePayments ?? []).map((item) => (item.id === row.id ? nextRow : item)),
+        },
+        {
+          action: "MANUAL_EDIT",
+          entityType: "ProfitShare",
+          entityId: row.id,
+          originalValue: row,
+          newValue: nextRow,
+          reason: "Manual edit",
+        },
+      );
+    }
     case "VOID_ENTRY":
       return applyCorrection(
         state,
@@ -1037,8 +1130,28 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         },
         "MANUAL_EDIT",
       );
-    case "UNDO_ENTRY":
+    case "UNDO_ENTRY": {
+      if (action.payload.entityType === "ProfitShare") {
+        const row = (state.profitSharePayments ?? []).find((item) => item.id === action.payload.entityId);
+        if (!row || row.voided) return state;
+        const nextRow = { ...row, voided: true, updatedAt: nowISO() };
+        return withAudit(
+          {
+            ...state,
+            profitSharePayments: (state.profitSharePayments ?? []).map((item) => (item.id === row.id ? nextRow : item)),
+          },
+          {
+            action: "UNDO",
+            entityType: "ProfitShare",
+            entityId: row.id,
+            originalValue: row,
+            newValue: nextRow,
+            reason: "Undo this entry?",
+          },
+        );
+      }
       return applyUndo(state, action.payload.entityType, action.payload.entityId);
+    }
     case "GENERATE_RECEIPT":
     case "MARK_RECEIPT_SHARE_ATTEMPTED":
     case "MARK_RECEIPT_SENT":

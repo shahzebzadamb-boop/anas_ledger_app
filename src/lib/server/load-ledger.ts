@@ -4,6 +4,7 @@ import { normalizeState } from "@/lib/ledger-actions";
 import { asBool, getPool, toIso } from "@/lib/server/db";
 import { prepareLedgerDatabase } from "@/lib/server/prepare-ledger";
 import { ensureMonthlyReportsSafe } from "@/lib/server/monthly-reports";
+import { loadProfitSharePayments } from "@/lib/server/profit-share";
 import { loadReceipts } from "@/lib/server/receipts";
 import { repairKnownIntMaxRow } from "@/lib/server/repair-known-intmax";
 import type {
@@ -235,7 +236,12 @@ export async function loadLedgerState(): Promise<LedgerState> {
     nightSummaryDates: cycles.map((row) => String(row.cycleDate)),
     monthlyReports: [],
     receipts: [],
+    profitSharePayments: [],
   });
-  const [monthlyReports, receipts] = await Promise.all([ensureMonthlyReportsSafe(pool, state), loadReceipts(pool)]);
-  return { ...state, monthlyReports, receipts };
+  const [monthlyReports, receipts, profitSharePayments] = await Promise.all([
+    ensureMonthlyReportsSafe(pool, state),
+    loadReceipts(pool),
+    loadProfitSharePayments(pool),
+  ]);
+  return { ...state, monthlyReports, receipts, profitSharePayments };
 }

@@ -12,6 +12,9 @@ export function buildReportPdf(input: {
   flats: { name: string; business: number; received: number; pending: number; expenses: number; stays?: number; occupiedNights?: number }[];
   stays?: number;
   occupiedNights?: number;
+  currentMonthReceived?: number;
+  puranaRecovered?: number;
+  netCashProfit?: number;
 }): Blob {
   const lines = [
     "ANAS LEDGER",
@@ -22,6 +25,19 @@ export function buildReportPdf(input: {
     `Received ${formatPKR(input.totals.received)}`,
     `Pending ${formatPKR(input.totals.pending)}`,
     `Expenses ${formatPKR(input.totals.expenses)}`,
+  ];
+  if (input.currentMonthReceived != null || input.puranaRecovered != null || input.netCashProfit != null) {
+    lines.splice(
+      5,
+      3,
+      `Current month received ${formatPKR(input.currentMonthReceived ?? input.totals.received)}`,
+      `Purana Khata recovered ${formatPKR(input.puranaRecovered ?? 0)}`,
+      `Expenses ${formatPKR(input.totals.expenses)}`,
+      `Closing pending ${formatPKR(input.totals.pending)}`,
+      `Net cash profit ${formatPKR(input.netCashProfit ?? input.totals.received - input.totals.expenses)}`,
+    );
+  }
+  lines.push(
     "",
     "Flat performance",
     ...input.flats.map((flat) => {
@@ -29,15 +45,57 @@ export function buildReportPdf(input: {
       const stayCount = flat.stays != null ? `  Stays ${flat.stays}` : "";
       return `${flat.name}  Biz ${formatPKR(flat.business)}  Rec ${formatPKR(flat.received)}  Pend ${formatPKR(flat.pending)}  Exp ${formatPKR(flat.expenses)}${stayCount}${nights}`;
     }),
-  ];
+  );
   if (input.stays != null || input.occupiedNights != null) {
     lines.push("", "Operational summary");
     if (input.stays != null) lines.push(`Stays ${input.stays}`);
     if (input.occupiedNights != null) lines.push(`Occupied nights ${input.occupiedNights}`);
   }
 
+  return linesToPdf(lines);
+}
+
+export function buildOwnerEarningsPdf(
+  months: {
+    label: string;
+    live?: boolean;
+    currentReceived: number;
+    puranaRecovered: number;
+    totalCashReceived: number;
+    expenses: number;
+    netCashProfit: number;
+    anasShare: number;
+    khizerShare: number;
+    khizerPaid: number;
+    stillOwed: number;
+    overpaid: number;
+  }[],
+): Blob {
+  const lines = ["ANAS LEDGER", "PRIVATE OWNER SUMMARY", "Do not share with clients", ""];
+  for (const month of months) {
+    lines.push(
+      `${month.label}${month.live ? " (Live)" : ""}`,
+      `Current month received ${formatPKR(month.currentReceived)}`,
+      `Purana Khata recovered ${formatPKR(month.puranaRecovered)}`,
+      `Total cash received ${formatPKR(month.totalCashReceived)}`,
+      `Expenses ${formatPKR(month.expenses)}`,
+      `Net cash profit ${formatPKR(month.netCashProfit)}`,
+      `Anas 50% ${formatPKR(month.anasShare)}`,
+      `Khizer 50% ${formatPKR(month.khizerShare)}`,
+      `Khizer paid ${formatPKR(month.khizerPaid)}`,
+      month.overpaid > 0
+        ? `Overpaid to Khizer ${formatPKR(month.overpaid)}`
+        : `Still owed to Khizer ${formatPKR(month.stillOwed)}`,
+      "",
+    );
+  }
+  return linesToPdf(lines, 12);
+}
+
+function linesToPdf(lines: string[], fontSize = 11): Blob {
+  const step = fontSize === 11 ? 16 : 13;
   const content = lines
-    .map((line, index) => `BT /F1 11 Tf 40 ${760 - index * 16} Td (${escapePdf(line)}) Tj ET`)
+    .map((line, index) => `BT /F1 ${fontSize} Tf 40 ${760 - index * step} Td (${escapePdf(line)}) Tj ET`)
     .join("\n");
   const objects = [
     "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",

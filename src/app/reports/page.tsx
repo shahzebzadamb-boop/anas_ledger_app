@@ -82,6 +82,20 @@ export default function ReportsPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Reports" subtitle="Formal monthly reports. Home can also switch months." />
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          href="/reports/purana-khata"
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-3 text-sm font-semibold text-on-primary"
+        >
+          Purana Khata
+        </Link>
+        <Link
+          href="/reports/earnings"
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-3 text-sm font-semibold text-on-primary"
+        >
+          Total Earning
+        </Link>
+      </div>
       <Link href="/reports/receipts" className="inline-flex min-h-11 items-center text-sm font-medium text-secondary">
         Receipts
       </Link>
