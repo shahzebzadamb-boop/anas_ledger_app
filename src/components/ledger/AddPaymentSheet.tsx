@@ -6,7 +6,7 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, formatStayDates, karachiDateInput } from "@/lib/dates";
 import { paymentStayChoices, stayRemaining, uniquePaymentStayId } from "@/lib/ledger";
-import { formatPKR, parseFormAmount } from "@/lib/money";
+import { formatPKR, moneyInputFromSaved, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { newestCreatedReceipt, type AddedReceiptInfo } from "@/lib/receipts";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/types";
@@ -30,7 +30,11 @@ export function AddPaymentSheet({
   const lock = useRef(false);
   const [selectedClientId, setSelectedClientId] = useState(clientId ?? lockedStay?.clientId ?? clients[0]?.id ?? "");
   const [selectedStayId, setSelectedStayId] = useState(stayId ?? "");
-  const [amountRaw, setAmountRaw] = useState("");
+  const [amountRaw, setAmountRaw] = useState(() => {
+    if (!stayId) return "";
+    const pending = stayRemaining(stayId, state);
+    return pending > 0 ? moneyInputFromSaved(pending) : "";
+  });
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [receivedById, setReceivedById] = useState(
     state.receivers.find((item) => item.name === "Anas")?.id ?? "recv_anas",
@@ -98,14 +102,14 @@ export function AddPaymentSheet({
       onAdded?.({ receiptId: newestCreatedReceipt(before, next)?.id ?? null });
       onClose();
     } catch {
-      setError("Save failed.");
+      setError("Couldn't save. Try again.");
       lock.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <Sheet title="Add payment" onClose={onClose}>
+    <Sheet title={stayId ? "Receive payment" : "Add payment"} onClose={onClose}>
       {error ? <p className="mb-3 text-sm font-normal text-warning">{error}</p> : null}
       {clients.length === 0 ? (
         <p className="text-sm font-normal text-muted">No stays yet. Add a stay first.</p>
@@ -130,7 +134,12 @@ export function AddPaymentSheet({
               </select>
             </Field>
           ) : (
-            <p className="text-sm font-medium">{state.clients.find((item) => item.id === selectedClientId)?.name}</p>
+            <div className="space-y-1">
+              <p className="text-xs font-normal text-muted">Client</p>
+              <p className="text-sm font-medium">
+                {state.clients.find((item) => item.id === selectedClientId)?.name}
+              </p>
+            </div>
           )}
           {!stayId && choices.length > 1 ? (
             <Field label="Stay">
@@ -151,12 +160,25 @@ export function AddPaymentSheet({
               </select>
             </Field>
           ) : stay ? (
-            <p className="text-sm font-normal text-muted">
-              {state.flats.find((item) => item.id === stay.flatId)?.name ?? "Flat"} · pending {formatPKR(remaining)}
-            </p>
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-normal text-muted">Flat</p>
+                <p className="text-sm font-medium">{state.flats.find((item) => item.id === stay.flatId)?.name ?? "Flat"}</p>
+              </div>
+              <div>
+                <p className="text-xs font-normal text-muted">Stay</p>
+                <p className="text-sm font-medium">
+                  {formatStayDates(stay.checkIn, stay.checkOut).replace(" – ", " → ")}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-normal text-muted">Pending</p>
+                <p className="money text-sm text-warning">{formatPKR(remaining)}</p>
+              </div>
+            </div>
           ) : null}
           <MoneyInput
-            label="Amount *"
+            label={stayId ? "Amount received" : "Amount *"}
             value={amountRaw}
             placeholder="10000"
             allowZero={false}
@@ -195,7 +217,7 @@ export function AddPaymentSheet({
               />
             </Field>
           ) : null}
-          <Field label="Date">
+          <Field label={stayId ? "Payment date" : "Date"}>
             <input type="date" className={fieldClass} value={date} onChange={(event) => setDate(event.target.value)} />
           </Field>
           <Field label="Notes">

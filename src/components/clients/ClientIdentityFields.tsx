@@ -40,6 +40,7 @@ export function ClientIdentityFields({
   const [iosHint, setIosHint] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [phoneChoices, setPhoneChoices] = useState<string[]>([]);
+  const [pendingContactName, setPendingContactName] = useState("");
 
   useEffect(() => {
     const supported = contactsPickerSupported();
@@ -53,6 +54,21 @@ export function ClientIdentityFields({
     return suggestClients(state, name).filter((client) => client.name.toLowerCase() !== name.trim().toLowerCase());
   }, [existing, name, state]);
 
+  function applyPickedPhone(raw: string, contactName: string) {
+    setPhoneChoices([]);
+    setPendingContactName("");
+    if (!hideName) {
+      const match = findClientByPhone(state, raw);
+      if (match) {
+        onNameChange(match.name);
+        onPhoneChange(displayPhone(match.phone));
+        return;
+      }
+      if (contactName) onNameChange(contactName);
+    }
+    onPhoneChange(displayPhone(raw));
+  }
+
   async function chooseContact() {
     setPickerError(null);
     const result = await pickContact();
@@ -62,13 +78,12 @@ export function ClientIdentityFields({
       return;
     }
     const nextName = result.contact.name;
-    if (nextName) onNameChange(nextName);
     if (result.contact.phones.length === 1) {
-      setPhoneChoices([]);
-      onPhoneChange(displayPhone(result.contact.phones[0]));
+      applyPickedPhone(result.contact.phones[0], nextName);
       return;
     }
     if (result.contact.phones.length > 1) {
+      setPendingContactName(nextName);
       setPhoneChoices(result.contact.phones);
     }
   }
@@ -86,36 +101,37 @@ export function ClientIdentityFields({
     <div className="space-y-3">
       {hideName ? null : (
         <>
-      <label className="block text-sm font-medium" htmlFor={nameId}>
-        Client name {phoneRequired ? "*" : ""}
-        <input
-          id={nameId}
-          name="name"
-          type="text"
-          autoComplete="name"
-          autoCapitalize="words"
-          autoCorrect="off"
-          className={`${fieldClass} mt-1`}
-          value={name}
-          onChange={(event) => onNameChange(event.target.value)}
-          placeholder="Tufail Khan"
-        />
-      </label>
-      {suggestions.length > 0 ? (
-        <div className="space-y-1">
-          {suggestions.map((client) => (
-            <button
-              key={client.id}
-              type="button"
-              className="chip w-full justify-start"
-              onClick={() => useClient(client.id)}
-            >
-              {client.name}
-              {client.phone ? ` · ${displayPhone(client.phone)}` : ""}
-            </button>
-          ))}
-        </div>
-      ) : null}
+          <label className="block text-sm font-medium" htmlFor={nameId}>
+            Name {phoneRequired ? "*" : ""}
+            <input
+              id={nameId}
+              name="name"
+              type="text"
+              autoComplete="name"
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+              className={`${fieldClass} mt-1`}
+              value={name}
+              onChange={(event) => onNameChange(event.target.value)}
+              placeholder="Tufail Khan"
+            />
+          </label>
+          {suggestions.length > 0 ? (
+            <div className="space-y-1">
+              {suggestions.map((client) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  className="chip w-full justify-start"
+                  onClick={() => useClient(client.id)}
+                >
+                  {client.name}
+                  {client.phone ? ` · ${displayPhone(client.phone)}` : ""}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </>
       )}
       <label className="block text-sm font-medium" htmlFor={phoneId}>
@@ -126,6 +142,8 @@ export function ClientIdentityFields({
           type="tel"
           inputMode="tel"
           autoComplete="tel"
+          autoCorrect="off"
+          spellCheck={false}
           className={`${fieldClass} mt-1`}
           value={phone}
           onChange={(event) => {
@@ -139,12 +157,16 @@ export function ClientIdentityFields({
         <p className="text-sm font-normal text-warning">Enter a valid phone number.</p>
       ) : null}
       {pickerAvailable ? (
-        <Button type="button" className="w-full" onClick={() => void chooseContact()}>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary"
+          onClick={() => void chooseContact()}
+        >
           <Contact className="h-4 w-4" aria-hidden="true" />
           From Contacts
-        </Button>
+        </button>
       ) : iosHint ? (
-        <p className="text-[11px] font-normal text-muted">AutoFill Contact above keyboard</p>
+        <p className="text-[11px] font-normal text-muted">Use AutoFill Contact above keyboard</p>
       ) : null}
       {pickerError ? <p className="text-sm font-normal text-warning">{pickerError}</p> : null}
       {phoneChoices.length > 1 ? (
@@ -155,10 +177,7 @@ export function ClientIdentityFields({
               key={item}
               type="button"
               className="chip w-full justify-start"
-              onClick={() => {
-                onPhoneChange(displayPhone(item));
-                setPhoneChoices([]);
-              }}
+              onClick={() => applyPickedPhone(item, pendingContactName)}
             >
               {displayPhoneSpaced(item)}
             </button>

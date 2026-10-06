@@ -65,7 +65,7 @@ export function LedgerPage() {
     ),
   );
   const [sheet, setSheet] = useState<"stay" | "payment" | "expense" | null>(null);
-  const [toast, setToast] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
 
   const range = useMemo(() => periodRange(period, state), [period, state]);
@@ -109,12 +109,19 @@ export function LedgerPage() {
   function added(info?: { receiptId?: string | null }) {
     if (info?.receiptId) {
       setReceiptId(info.receiptId);
-      setToast(false);
+      setToast(null);
       return;
     }
     setReceiptId(null);
-    setToast(true);
-    window.setTimeout(() => setToast(false), 1600);
+    setToast("✓ Added");
+    window.setTimeout(() => setToast(null), 1600);
+  }
+
+  function paymentReceived(info?: { receiptId?: string | null }) {
+    if (info?.receiptId) setReceiptId(info.receiptId);
+    else setReceiptId(null);
+    setToast("✓ Payment received");
+    window.setTimeout(() => setToast(null), 1600);
   }
 
   function openAdd() {
@@ -125,10 +132,9 @@ export function LedgerPage() {
 
   return (
     <div className="space-y-3.5">
+      {toast ? <p className="toast-ok">{toast}</p> : null}
       {receiptId ? (
         <PaymentReceiptNotice receiptId={receiptId} onDismiss={() => setReceiptId(null)} />
-      ) : toast ? (
-        <p className="toast-ok">✓ Added</p>
       ) : null}
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="min-h-11 inline-flex items-center text-sm font-medium text-secondary">
@@ -192,7 +198,17 @@ export function LedgerPage() {
         ) : (
           <List>
             {pending.map((row) => (
-              <StayLedgerCard key={row.stayId} row={row} showFlat showDates showPhone showWhatsApp showActions />
+              <StayLedgerCard
+                key={row.stayId}
+                row={row}
+                showFlat
+                showDates
+                showPhone
+                showWhatsApp
+                showReceive
+                showActions
+                onPaymentAdded={paymentReceived}
+              />
             ))}
           </List>
         )

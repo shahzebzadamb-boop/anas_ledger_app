@@ -376,17 +376,27 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
             <p className="text-sm text-warning">No stay for this customer. Record rent first.</p>
           ) : null}
           {"needsPhone" in parsed && parsed.needsPhone ? (
-            <ClientIdentityFields
-              nameId="quick-entry-client-name"
-              phoneId="quick-entry-client-phone"
-              name={"clientName" in parsed ? parsed.clientName : ""}
-              phone={phonePrompt}
-              state={state}
-              onNameChange={(value) => {
-                if ("clientName" in parsed) setParsed({ ...parsed, clientName: value });
+            <form
+              autoComplete="on"
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void confirm();
               }}
-              onPhoneChange={setPhonePrompt}
-            />
+            >
+              <p className="text-sm font-medium">Add customer number</p>
+              <ClientIdentityFields
+                nameId="quick-entry-client-name"
+                phoneId="quick-entry-client-phone"
+                name={"clientName" in parsed ? parsed.clientName : ""}
+                phone={phonePrompt}
+                state={state}
+                onNameChange={(value) => {
+                  if ("clientName" in parsed) setParsed({ ...parsed, clientName: value });
+                }}
+                onPhoneChange={setPhonePrompt}
+              />
+            </form>
           ) : null}
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Button

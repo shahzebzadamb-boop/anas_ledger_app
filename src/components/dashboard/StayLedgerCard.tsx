@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowDownToLine } from "lucide-react";
 import { formatDate, formatStayDates } from "@/lib/dates";
 import { formatPKR } from "@/lib/money";
 import { displayPhone } from "@/lib/phone";
 import { clientWhatsAppHref } from "@/lib/reminders";
 import type { StayLedgerRow } from "@/lib/ledger";
+import type { AddedReceiptInfo } from "@/lib/receipts";
 import { cn } from "@/lib/utils";
 import { EntryEditor } from "@/components/dashboard/EntryEditor";
 import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
@@ -27,14 +29,18 @@ export function StayLedgerCard({
   showDates,
   showPhone,
   showWhatsApp,
+  showReceive,
   showActions,
+  onPaymentAdded,
 }: {
   row: StayLedgerRow;
   showFlat: boolean;
   showDates?: boolean;
   showPhone?: boolean;
   showWhatsApp?: boolean;
+  showReceive?: boolean;
   showActions?: boolean;
+  onPaymentAdded?: (info?: AddedReceiptInfo) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ kind: "stay" | "payment"; id: string } | null>(null);
@@ -96,17 +102,37 @@ export function StayLedgerCard({
           </p>
         ) : null}
       </div>
-      {showWhatsApp && reminderHref ? (
-        <div className="px-3.5 pb-3">
-          <a
-            href={reminderHref}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
-            onClick={(event) => event.stopPropagation()}
-          >
-            WhatsApp
-          </a>
+      {(showReceive && row.pending > 0) || (showWhatsApp && reminderHref) ? (
+        <div className="flex min-w-0 flex-nowrap items-center justify-between gap-2 px-3.5 pb-3">
+          {showReceive && row.pending > 0 ? (
+            <button
+              type="button"
+              aria-label="Receive payment"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-primary px-3 text-sm font-semibold text-on-primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAddPayment(true);
+              }}
+            >
+              <ArrowDownToLine className="h-4 w-4" aria-hidden />
+              Receive
+            </button>
+          ) : (
+            <span />
+          )}
+          {showWhatsApp && reminderHref ? (
+            <a
+              href={reminderHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 text-sm font-medium text-primary"
+              onClick={(event) => event.stopPropagation()}
+            >
+              WhatsApp
+            </a>
+          ) : (
+            <span />
+          )}
         </div>
       ) : null}
       {receiptId ? (
@@ -211,6 +237,10 @@ export function StayLedgerCard({
           clientId={row.clientId}
           onClose={() => setAddPayment(false)}
           onAdded={(info) => {
+            if (onPaymentAdded) {
+              onPaymentAdded(info);
+              return;
+            }
             if (info?.receiptId) setReceiptId(info.receiptId);
           }}
         />
