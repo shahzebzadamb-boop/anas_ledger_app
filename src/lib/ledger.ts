@@ -74,13 +74,19 @@ export function clientSecurityHeld(clientId: string, state: LedgerState): number
 }
 
 export function isStayPendingActive(stay: Stay, state: LedgerState): boolean {
+  if (!isLive(stay)) return false;
   if (stayRemaining(stay.id, state) <= 0) return false;
-  if (stay.activePending) return true;
-  if (stay.notifyEnabled && stay.importKey === null) return true;
-  return state.reviews.some(
-    (review) =>
-      review.stayId === stay.id &&
-      review.pendingDecision === "STILL_PENDING",
+  const decision = state.reviews.find((review) => review.stayId === stay.id)?.pendingDecision;
+  if (decision === "ALREADY_PAID" || decision === "IGNORE") return false;
+  if (decision === "STILL_PENDING") return true;
+  if (stay.activePending || stay.notifyEnabled) return true;
+  if (!stay.importKey) return true;
+  return state.payments.some(
+    (item) =>
+      item.stayId === stay.id &&
+      isLive(item) &&
+      isPlausibleLedgerAmount(item.amount) &&
+      isRentPayment(item, state.reviews),
   );
 }
 
@@ -208,10 +214,50 @@ export function isRentPayment(item: LedgerState["payments"][number], reviews: Le
 export type StayPaymentLine = {
   id: string;
   receivedAt: string;
+  createdAt: string;
   amount: number;
   method: string;
   receivedBy: string;
+  remainingAfter: number;
+  voided?: boolean;
 };
+
+export function stayPaymentHistory(
+  stayId: string,
+  state: LedgerState,
+  opts?: { includeVoided?: boolean },
+): StayPaymentLine[] {
+  const collectible = stayCollectible(stayId, state);
+  const security = staySecurityApplied(stayId, state);
+  const payments = state.payments
+    .filter(
+      (item) =>
+        item.stayId === stayId &&
+        (opts?.includeVoided || isLive(item)) &&
+        isPlausibleLedgerAmount(item.amount) &&
+        isRentPayment(item, state.reviews),
+    )
+    .sort((a, b) => {
+      const left = a.createdAt || a.receivedAt;
+      const right = b.createdAt || b.receivedAt;
+      if (left === right) return a.id.localeCompare(b.id);
+      return left < right ? -1 : 1;
+    });
+  let received = 0;
+  return payments.map((item) => {
+    if (isLive(item)) received += item.amount;
+    return {
+      id: item.id,
+      receivedAt: item.receivedAt,
+      createdAt: item.createdAt || item.receivedAt,
+      amount: item.amount,
+      method: methodLabel(item.method),
+      receivedBy: receiverName(state, item.receivedById),
+      remainingAfter: Math.max(0, collectible - security - received),
+      voided: item.voided,
+    };
+  });
+}
 
 export type StayLedgerRow = {
   stayId: string;
@@ -302,13 +348,9 @@ function toStayLedgerRow(stay: Stay, state: LedgerState, asOf?: Date): StayLedge
     methods: [...new Set(payments.map((item) => methodLabel(item.method)))],
     receivedBy: [...new Set(payments.map((item) => receiverName(state, item.receivedById)))],
     status: pending > 0 ? ("Pending" as const) : ("Settled" as const),
-    payments: payments.map((item) => ({
-      id: item.id,
-      receivedAt: item.receivedAt,
-      amount: item.amount,
-      method: methodLabel(item.method),
-      receivedBy: receiverName(state, item.receivedById),
-    })),
+    payments: stayPaymentHistory(stay.id, state).filter(
+      (item) => !asOf || new Date(item.receivedAt) <= asOf,
+    ),
     security: state.security
       .filter((item) => item.stayId === stay.id && isLive(item))
       .map((item) => ({ id: item.id, amount: item.amount, kind: item.kind, at: item.occurredAt })),

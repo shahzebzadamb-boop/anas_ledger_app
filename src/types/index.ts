@@ -70,6 +70,7 @@ export type RentEntry = {
   flatId: string;
   amount: number;
   occurredAt: string;
+  createdAt?: string;
   note: string | null;
   voided?: boolean;
 };

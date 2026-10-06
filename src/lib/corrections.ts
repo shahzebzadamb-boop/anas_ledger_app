@@ -307,7 +307,7 @@ export function correctionPreview(
 export function withAudit(
   state: LedgerState,
   entry: {
-    action: "QUICK_ENTRY" | "MANUAL_EDIT" | "VOID";
+    action: "QUICK_ENTRY" | "MANUAL_EDIT" | "VOID" | "UNDO";
     entityType: string;
     entityId: string;
     originalValue: unknown;
@@ -345,7 +345,7 @@ export function syncStayPending(state: LedgerState, stayId: string | null | unde
   };
 }
 
-function voidPayment(state: LedgerState, paymentId: string, reason: string, method: "QUICK_ENTRY" | "MANUAL_EDIT" | "VOID"): LedgerState {
+function voidPayment(state: LedgerState, paymentId: string, reason: string, method: "QUICK_ENTRY" | "MANUAL_EDIT" | "VOID" | "UNDO"): LedgerState {
   const payment = state.payments.find((item) => item.id === paymentId);
   if (!payment || payment.voided) return state;
   let next: LedgerState = {
@@ -360,7 +360,64 @@ function voidPayment(state: LedgerState, paymentId: string, reason: string, meth
     newValue: { ...payment, voided: true },
     reason,
   });
-  return syncStayPending(next, payment.stayId);
+  next = syncStayPending(next, payment.stayId);
+  if (payment.clientId) {
+    const cycleDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+    next = {
+      ...next,
+      reminderSilences: [
+        { clientId: payment.clientId, cycleDate },
+        ...next.reminderSilences.filter(
+          (item) => !(item.clientId === payment.clientId && item.cycleDate === cycleDate),
+        ),
+      ],
+    };
+  }
+  return next;
+}
+
+export function applyUndo(
+  state: LedgerState,
+  entityType: "Stay" | "Payment" | "Expense" | "Security",
+  entityId: string,
+): LedgerState {
+  const reason = "Undo this entry?";
+  if (entityType === "Payment") return voidPayment(state, entityId, reason, "UNDO");
+  if (entityType === "Expense") {
+    const expense = state.expenses.find((item) => item.id === entityId);
+    if (!expense || expense.voided) return state;
+    return withAudit(
+      { ...state, expenses: state.expenses.map((item) => (item.id === entityId ? { ...item, voided: true } : item)) },
+      { action: "UNDO", entityType: "Expense", entityId, originalValue: expense, newValue: { ...expense, voided: true }, reason },
+    );
+  }
+  if (entityType === "Security") {
+    const row = state.security.find((item) => item.id === entityId);
+    if (!row || row.voided) return state;
+    const next = withAudit(
+      { ...state, security: state.security.map((item) => (item.id === entityId ? { ...item, voided: true } : item)) },
+      { action: "UNDO", entityType: "Security", entityId, originalValue: row, newValue: { ...row, voided: true }, reason },
+    );
+    return syncStayPending(next, row.stayId);
+  }
+  const stay = state.stays.find((item) => item.id === entityId);
+  if (!stay || stay.voided) return state;
+  const next: LedgerState = {
+    ...state,
+    stays: state.stays.map((item) =>
+      item.id === entityId ? { ...item, voided: true, activePending: false, notifyEnabled: false } : item,
+    ),
+    rentEntries: state.rentEntries.map((item) => (item.stayId === entityId ? { ...item, voided: true } : item)),
+    payments: state.payments.map((item) => (item.stayId === entityId ? { ...item, voided: true } : item)),
+  };
+  return withAudit(next, {
+    action: "UNDO",
+    entityType: "Stay",
+    entityId,
+    originalValue: stay,
+    newValue: { ...stay, voided: true },
+    reason,
+  });
 }
 
 function findReceiverId(state: LedgerState, name: string | null): { state: LedgerState; id: string } {

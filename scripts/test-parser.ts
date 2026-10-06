@@ -2,13 +2,16 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { emptyLedgerState } from "../src/lib/empty-state";
 import { applyCalcInput, formatCalcDisplay, initialCalcState } from "../src/lib/calculator";
-import { formatKarachiDateLong, karachiMonthRange, nightsBetween } from "../src/lib/dates";
+import { formatKarachiDateLong, formatKarachiDateTime, karachiMonthRange, nightsBetween } from "../src/lib/dates";
 import {
   dashboardTotals,
   expenseLedgerRows,
+  isStayPendingActive,
   paymentLedgerRows,
   paymentStayChoices,
+  pendingLedgerRows,
   stayLedgerRows,
+  stayPaymentHistory,
   stayRemaining,
   totalsMatchStayLedger,
   uniquePaymentStayId,
@@ -735,6 +738,109 @@ if (firstPending !== 24000 || remainingAfterPartial !== 14000) {
   console.error("LIVE PENDING AFTER PAYMENT FAIL", firstPending, remainingAfterPartial);
 } else {
   console.log("OK live pending 24000 -> 14000 after Rs 10,000 payment");
+}
+
+let historyStay = emptyLedgerState();
+historyStay = reducer(historyStay, {
+  type: "ADD_STAY",
+  payload: {
+    flat: "802-A",
+    clientName: "Tufail Khan",
+    phone: "03001112233",
+    checkIn: "2026-10-07T00:00:00+05:00",
+    checkOut: "2026-10-10T00:00:00+05:00",
+    nights: 3,
+    business: 20000,
+    received: 0,
+  },
+});
+const historyStayId = historyStay.stays[0]?.id ?? "";
+const historyClientId = historyStay.clients[0]?.id ?? "";
+historyStay = {
+  ...historyStay,
+  stays: historyStay.stays.map((item) => (item.id === historyStayId ? { ...item, activePending: false, notifyEnabled: false } : item)),
+};
+historyStay = reducer(historyStay, {
+  type: "RECORD_PAYMENT",
+  payload: { clientId: historyClientId, stayId: historyStayId, amount: 15000, method: "CASH", receivedByName: "Anas" },
+});
+const pay15 = historyStay.payments.find((item) => item.amount === 15000);
+historyStay = {
+  ...historyStay,
+  payments: historyStay.payments.map((item) =>
+    item.id === pay15?.id ? { ...item, createdAt: "2026-10-07T14:10:00+05:00", receivedAt: "2026-10-07T14:10:00+05:00" } : item,
+  ),
+};
+historyStay = reducer(historyStay, {
+  type: "RECORD_PAYMENT",
+  payload: { clientId: historyClientId, stayId: historyStayId, amount: 3000, method: "BANK_TRANSFER", receivedByName: "Khizer" },
+});
+const pay3 = historyStay.payments.find((item) => item.amount === 3000);
+historyStay = {
+  ...historyStay,
+  payments: historyStay.payments.map((item) =>
+    item.id === pay3?.id ? { ...item, createdAt: "2026-10-07T17:30:00+05:00", receivedAt: "2026-10-07T17:30:00+05:00" } : item,
+  ),
+};
+const lines = stayPaymentHistory(historyStayId, historyStay);
+const pendingAfterTwo = stayRemaining(historyStayId, historyStay);
+const pendingRow = pendingLedgerRows(historyStay, "all").find((row) => row.stayId === historyStayId);
+const stillPending = isStayPendingActive(historyStay.stays[0]!, historyStay);
+const desynced = {
+  ...historyStay,
+  stays: historyStay.stays.map((item) =>
+    item.id === historyStayId ? { ...item, activePending: false, notifyEnabled: false } : item,
+  ),
+};
+const desyncedPending = isStayPendingActive(desynced.stays[0]!, desynced);
+const firstPayId = historyStay.payments.find((item) => item.amount === 15000)?.id;
+historyStay = reducer(historyStay, {
+  type: "RECORD_PAYMENT",
+  payload: { clientId: historyClientId, stayId: historyStayId, amount: 2000, method: "CASH", receivedByName: "Anas" },
+});
+const settledLines = stayPaymentHistory(historyStayId, historyStay);
+const lastPay = historyStay.payments.find((item) => item.amount === 2000);
+historyStay = reducer(historyStay, {
+  type: "UNDO_ENTRY",
+  payload: { entityType: "Payment", entityId: lastPay?.id ?? "" },
+});
+const afterUndo = stayRemaining(historyStayId, historyStay);
+const livePays = historyStay.payments.filter((item) => !item.voided && item.stayId === historyStayId);
+const voidedPays = historyStay.payments.filter((item) => item.voided && item.stayId === historyStayId);
+const firstStill = historyStay.payments.find((item) => item.id === firstPayId);
+const stamp = formatKarachiDateTime("2026-10-07T02:18:00+05:00");
+if (
+  lines.length !== 2 ||
+  lines[0]?.amount !== 15000 ||
+  lines[1]?.amount !== 3000 ||
+  lines[0]?.remainingAfter !== 5000 ||
+  lines[1]?.remainingAfter !== 2000 ||
+  pendingAfterTwo !== 2000 ||
+  !stillPending ||
+  !desyncedPending ||
+  pendingRow?.pending !== 2000 ||
+  settledLines.at(-1)?.remainingAfter !== 0 ||
+  afterUndo !== 2000 ||
+  livePays.length !== 2 ||
+  livePays.reduce((sum, item) => sum + item.amount, 0) !== 18000 ||
+  voidedPays.length !== 1 ||
+  firstStill?.amount !== 15000 ||
+  stamp !== "07 Oct 2026 · 2:18 AM"
+) {
+  failed += 1;
+  console.error("ACTIVITY PAYMENT HISTORY FAIL", {
+    lines,
+    pendingAfterTwo,
+    stillPending,
+    pendingRow,
+    afterUndo,
+    livePays: livePays.map((item) => item.amount),
+    voidedPays: voidedPays.length,
+    stamp,
+    settled: settledLines.map((item) => item.remainingAfter),
+  });
+} else {
+  console.log("OK additive payments 15k+3k remaining 2k, undo last reopens 2k pending");
 }
 
 let manual = emptyLedgerState();

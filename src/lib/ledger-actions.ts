@@ -6,7 +6,7 @@ import {
   stayRemaining,
   uniquePaymentStayId,
 } from "@/lib/ledger";
-import { applyCorrection, syncStayPending, withAudit } from "@/lib/corrections";
+import { applyCorrection, applyUndo, syncStayPending, withAudit } from "@/lib/corrections";
 import { formatPKR, isPlausibleLedgerAmount, isValidMoneyAmount } from "@/lib/money";
 import { nightsBetween } from "@/lib/dates";
 import { flatHasHistory, flatIdForName, isFlatActive, normalizeFlatCode } from "@/lib/flats";
@@ -132,6 +132,7 @@ export type Action =
       };
     }
   | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
+  | { type: "UNDO_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
   | { type: "GENERATE_RECEIPT"; paymentId: string }
   | { type: "MARK_RECEIPT_SHARE_ATTEMPTED"; receiptId: string }
   | { type: "MARK_RECEIPT_SENT"; receiptId: string };
@@ -1036,6 +1037,8 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         },
         "MANUAL_EDIT",
       );
+    case "UNDO_ENTRY":
+      return applyUndo(state, action.payload.entityType, action.payload.entityId);
     case "GENERATE_RECEIPT":
     case "MARK_RECEIPT_SHARE_ATTEMPTED":
     case "MARK_RECEIPT_SENT":

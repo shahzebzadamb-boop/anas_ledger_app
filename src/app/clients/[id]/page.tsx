@@ -6,14 +6,15 @@ import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatKarachiDateTime } from "@/lib/dates";
 import {
   clientProfile,
   flatName,
   receiverName,
   stayCollectible,
+  stayPaymentHistory,
+  stayPayments,
   stayRemaining,
-  stayRevenue,
 } from "@/lib/ledger";
 import { formatPKR, methodLabel } from "@/lib/money";
 import { ClientIdentityFields } from "@/components/clients/ClientIdentityFields";
@@ -140,24 +141,52 @@ export default function ClientDetailPage() {
         </div>
       </section>
 
-      {profile.stays.map((stay) => (
-        <button
-          key={stay.id}
-          type="button"
-          className="w-full border-b border-border py-2.5 text-left last:border-b-0"
-          onClick={() => setEdit({ kind: "stay", id: stay.id })}
-        >
-          <p className="font-semibold">Flat {flatName(state, stay.flatId)}</p>
-          <p className="mt-0.5 text-sm font-normal text-muted">
-            {formatDate(stay.checkIn)} · {stay.nights} days
-          </p>
-          <p className="mt-1 text-sm font-normal text-secondary">
-            Revenue <span className="money text-foreground">{formatPKR(stayRevenue(stay.id, state))}</span>
-            {" · "}Collectible <span className="money text-foreground">{formatPKR(stayCollectible(stay.id, state))}</span>
-            {" · "}Pending <span className="money text-warning">{formatPKR(stayRemaining(stay.id, state))}</span>
-          </p>
-        </button>
-      ))}
+      {profile.stays.map((stay) => {
+        const payments = stayPaymentHistory(stay.id, state);
+        const pending = stayRemaining(stay.id, state);
+        return (
+          <div key={stay.id} className="space-y-2 border-b border-border py-2.5 last:border-b-0">
+            <button
+              type="button"
+              className="w-full text-left"
+              onClick={() => setEdit({ kind: "stay", id: stay.id })}
+            >
+              <p className="font-semibold">Flat {flatName(state, stay.flatId)}</p>
+              <p className="mt-0.5 text-sm font-normal text-muted">
+                {formatDate(stay.checkIn)} · {stay.nights} days
+              </p>
+              <p className="mt-1 text-sm font-normal text-secondary">
+                Business <span className="money text-foreground">{formatPKR(stayCollectible(stay.id, state))}</span>
+                {" · "}Received{" "}
+                <span className="money text-foreground">{formatPKR(stayPayments(stay.id, state))}</span>
+                {" · "}Pending <span className="money text-warning">{formatPKR(pending)}</span>
+              </p>
+            </button>
+            {payments.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment history</p>
+                {payments.map((payment) => (
+                  <button
+                    key={payment.id}
+                    type="button"
+                    className="block w-full rounded-xl border border-border px-3 py-2.5 text-left"
+                    onClick={() => setEdit({ kind: "payment", id: payment.id })}
+                  >
+                    <p className="text-[11px] font-normal text-muted">
+                      {formatKarachiDateTime(payment.createdAt) ?? formatDate(payment.receivedAt)}
+                    </p>
+                    <p className="text-xs font-normal text-muted">
+                      {payment.method} · Received by {payment.receivedBy}
+                    </p>
+                    <p className="money mt-0.5 text-sm">+ {formatPKR(payment.amount)}</p>
+                    <p className="mt-0.5 text-xs font-normal text-muted">Remaining {formatPKR(payment.remainingAfter)}</p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
 
       <section>
         <h2 className="section-title mb-2">History</h2>

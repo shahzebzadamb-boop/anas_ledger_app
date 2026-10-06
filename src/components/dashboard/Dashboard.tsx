@@ -19,7 +19,7 @@ import {
   toPreset,
   type HomePeriod,
 } from "@/lib/home-period";
-import { dashboardTotals, needsAttention, stayLedgerRows } from "@/lib/ledger";
+import { dashboardTotals, needsAttention } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
 import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
@@ -35,7 +35,6 @@ export function Dashboard() {
   const historical = isHistoricalRange(range);
   const asOf = historical ? range.to : undefined;
   const attention = useMemo(() => needsAttention(state, selectedFlat, asOf), [asOf, selectedFlat, state]);
-  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat, asOf), [asOf, range, selectedFlat, state]);
   const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [range, selectedFlat, state]);
   const reviewCount = state.reviews.filter((item) => item.status === "NEEDS_REVIEW").length;
   const chipFlats = useMemo(() => {
@@ -68,6 +67,9 @@ export function Dashboard() {
         </Link>
         <Link href="/ledger" className="chip chip-active">
           Ledger
+        </Link>
+        <Link href="/activity" className="chip chip-active">
+          Activity
         </Link>
         <Link href="/reports/receipts" className="chip chip-active">
           Receipts
@@ -118,11 +120,7 @@ export function Dashboard() {
         }}
       />
       <NeedsAttention items={attention} />
-      <RecentActivity
-        stays={stays}
-        showFlat={selectedFlat === "all"}
-        emptyLabel={period.kind === "month" ? "No activity for this month." : "No stays yet."}
-      />
+      <RecentActivity emptyLabel={period.kind === "month" ? "No activity for this month." : "No stays yet."} />
     </div>
   );
 }

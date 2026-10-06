@@ -46,7 +46,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       "SELECT id, createdAt, flatId, clientId, checkIn, checkOut, nights, notifyEnabled, activePending, importKey, voided FROM stays ORDER BY checkIn DESC",
     ),
     pool.query<RowDataPacket[]>(
-      "SELECT id, stayId, clientId, flatId, amount, occurredAt, note, voided FROM business_entries ORDER BY occurredAt DESC",
+      "SELECT id, createdAt, stayId, clientId, flatId, amount, occurredAt, note, voided FROM business_entries ORDER BY occurredAt DESC",
     ),
     pool.query<RowDataPacket[]>(
       "SELECT id, createdAt, stayId, clientId, flatId, amount, method, receivedAt, notes, receivedById, voided FROM payments ORDER BY receivedAt DESC",
@@ -129,6 +129,7 @@ export async function loadLedgerState(): Promise<LedgerState> {
       flatId: String(row.flatId),
       amount: Number(row.amount),
       occurredAt: toIso(row.occurredAt),
+      createdAt: row.createdAt ? toIso(row.createdAt) : toIso(row.occurredAt),
       note: row.note ? String(row.note) : null,
       voided: asBool(row.voided),
     })),

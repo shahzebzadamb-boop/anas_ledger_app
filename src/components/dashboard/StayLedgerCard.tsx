@@ -13,6 +13,7 @@ import { EntryEditor } from "@/components/dashboard/EntryEditor";
 import { PaymentReceiptLink } from "@/components/receipts/PaymentReceiptLink";
 import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
 import { AddPaymentSheet } from "@/components/ledger/AddPaymentSheet";
+import { useLedger } from "@/lib/store";
 
 function MoneyRow({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
@@ -44,10 +45,13 @@ export function StayLedgerCard({
   showActions?: boolean;
   onPaymentAdded?: (info?: AddedReceiptInfo) => void;
 }) {
+  const { persist } = useLedger();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ kind: "stay" | "payment"; id: string } | null>(null);
   const [addPayment, setAddPayment] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [undoPaymentId, setUndoPaymentId] = useState<string | null>(null);
+  const [savingUndo, setSavingUndo] = useState(false);
   const securityHeld = row.security
     .filter((item) => item.kind === "RECEIVED")
     .reduce((sum, item) => sum + item.amount, 0);
@@ -166,21 +170,64 @@ export function StayLedgerCard({
           {row.payments.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment history</p>
-              {row.payments.map((payment, index) => (
-                <div key={payment.id} className="space-y-1">
-                  <button
-                    type="button"
-                    className="block w-full text-left"
-                    onClick={() => setEdit({ kind: "payment", id: payment.id })}
-                  >
-                    <p className="text-xs font-medium">Payment {index + 1}</p>
-                    <p className="text-sm">
-                      <span className="money">{formatPKR(payment.amount)}</span>
-                      <span className="text-muted"> · {payment.method}</span>
-                    </p>
-                    <p className="text-xs font-normal text-muted">Received by {payment.receivedBy}</p>
-                    <p className="text-xs font-normal text-muted">{formatDate(payment.receivedAt)}</p>
-                  </button>
+              {row.payments.map((payment) => (
+                <div key={payment.id} className="space-y-1 rounded-xl border border-border px-3 py-2.5">
+                  <p className="text-[11px] font-normal text-muted">
+                    {formatKarachiDateTime(payment.createdAt) ?? formatDate(payment.receivedAt)}
+                  </p>
+                  <p className="text-xs font-normal text-muted">
+                    {payment.method} · Received by {payment.receivedBy}
+                  </p>
+                  <p className="money text-sm">+ {formatPKR(payment.amount)}</p>
+                  <p className="text-xs font-normal text-muted">Remaining {formatPKR(payment.remainingAfter)}</p>
+                  {undoPaymentId === payment.id ? (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-sm font-medium">Undo this entry?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          className="min-h-11 rounded-xl border border-border text-sm font-semibold"
+                          onClick={() => setUndoPaymentId(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingUndo}
+                          className="min-h-11 rounded-xl border border-danger bg-transparent text-sm font-semibold text-danger"
+                          onClick={() => {
+                            setSavingUndo(true);
+                            void persist({
+                              type: "UNDO_ENTRY",
+                              payload: { entityType: "Payment", entityId: payment.id },
+                            }).finally(() => {
+                              setSavingUndo(false);
+                              setUndoPaymentId(null);
+                            });
+                          }}
+                        >
+                          Undo
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        className="inline-flex min-h-11 items-center rounded-xl border border-border px-3 text-sm font-semibold"
+                        onClick={() => setEdit({ kind: "payment", id: payment.id })}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex min-h-11 items-center rounded-xl border border-danger/70 bg-transparent px-3 text-sm font-semibold text-danger"
+                        onClick={() => setUndoPaymentId(payment.id)}
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  )}
                   <PaymentReceiptLink paymentId={payment.id} />
                 </div>
               ))}

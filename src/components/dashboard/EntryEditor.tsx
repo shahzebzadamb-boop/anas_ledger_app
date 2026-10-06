@@ -79,14 +79,15 @@ export function EntryEditor({
 
         {confirmVoid ? (
           <div className="mt-4 space-y-2 rounded-xl border border-border p-3">
-            <p className="text-sm font-medium">Void this entry?</p>
+            <p className="text-sm font-medium">Undo this entry?</p>
             <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => setConfirmVoid(false)}>Cancel</Button>
               <Button
                 variant="danger"
                 disabled={saving}
                 onClick={() =>
                   void save({
-                    type: "VOID_ENTRY",
+                    type: "UNDO_ENTRY",
                     payload: {
                       entityType: kind === "stay" ? "Stay" : kind === "expense" ? "Expense" : kind === "security" ? "Security" : "Payment",
                       entityId: id,
@@ -94,15 +95,14 @@ export function EntryEditor({
                   })
                 }
               >
-                Void
+                Undo
               </Button>
-              <Button onClick={() => setConfirmVoid(false)}>Cancel</Button>
             </div>
           </div>
         ) : (
           <div className="mt-4 flex items-center justify-between gap-2">
             <Button variant="ghost" onClick={() => setConfirmVoid(true)}>
-              Void entry
+              Undo
             </Button>
             <Button onClick={onClose}>Close</Button>
           </div>
