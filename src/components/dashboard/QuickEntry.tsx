@@ -163,7 +163,10 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
   const knownFlats = useMemo(() => knownFlatNames(state), [state]);
 
   useEffect(() => {
-    const focus = () => inputRef.current?.focus();
+    const focus = () => {
+      inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      inputRef.current?.focus({ preventScroll: true });
+    };
     window.addEventListener("focus-quick-entry", focus);
     if (new URLSearchParams(window.location.search).get("entry") === "1") focus();
     return () => window.removeEventListener("focus-quick-entry", focus);
@@ -296,7 +299,7 @@ export function QuickEntry({ onAdded }: { onAdded: (info?: AddedReceiptInfo) => 
           value={text}
           rows={2}
           placeholder={PLACEHOLDER}
-          className="w-full resize-none rounded-xl border border-border bg-input px-3 py-3 text-base"
+          className="w-full scroll-mt-24 resize-none rounded-xl border border-border bg-input px-3 py-3 text-base"
           onChange={(event) => {
             setText(event.target.value);
             setParsed(null);

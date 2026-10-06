@@ -22,6 +22,7 @@ import {
 import { dashboardTotals, needsAttention } from "@/lib/ledger";
 import { canUseBrowserNotifications } from "@/lib/notifications";
 import { useLedger } from "@/lib/store";
+import { GalaxyBackground } from "@/components/layout/GalaxyBackground";
 import { PaymentReceiptNotice } from "@/components/receipts/PaymentReceiptNotice";
 
 export function Dashboard() {
@@ -47,7 +48,9 @@ export function Dashboard() {
   const showCarryForward = period.kind === "month" && period.year === today.year && period.month === today.month;
 
   return (
-    <div className="space-y-3.5">
+    <>
+      <GalaxyBackground />
+      <div className="relative z-10 space-y-3.5">
       {receiptId ? (
         <PaymentReceiptNotice receiptId={receiptId} onDismiss={() => setReceiptId(null)} />
       ) : toast ? (
@@ -68,9 +71,13 @@ export function Dashboard() {
         <Link href="/ledger" className="chip chip-active">
           Ledger
         </Link>
-        <Link href="/activity" className="chip chip-active">
-          Activity
-        </Link>
+        <button
+          type="button"
+          className="chip-record"
+          onClick={() => window.dispatchEvent(new Event("focus-quick-entry"))}
+        >
+          Record
+        </button>
         <Link href="/reports/receipts" className="chip chip-active">
           Receipts
         </Link>
@@ -121,6 +128,7 @@ export function Dashboard() {
       />
       <NeedsAttention items={attention} />
       <RecentActivity emptyLabel={period.kind === "month" ? "No activity for this month." : "No stays yet."} />
-    </div>
+      </div>
+    </>
   );
 }
