@@ -20,6 +20,7 @@ export function DateFilter({
   onPreset,
   onCustom,
   hidePresets = false,
+  hideFlats = false,
 }: {
   flats: Flat[];
   selectedFlat: string;
@@ -29,19 +30,22 @@ export function DateFilter({
   onPreset: (value: DateFilterPreset) => void;
   onCustom: (value: DateRange) => void;
   hidePresets?: boolean;
+  hideFlats?: boolean;
 }) {
   return (
     <div className="min-w-0 space-y-2.5">
-      <div className="flex flex-wrap gap-2">
-        <Chip active={selectedFlat === "all"} onClick={() => onFlat("all")}>
-          All Flats
-        </Chip>
-        {flats.map((flat) => (
-          <Chip key={flat.id} active={selectedFlat === flat.name} onClick={() => onFlat(flat.name)}>
-            {flat.name}
+      {hideFlats ? null : (
+        <div className="flex flex-wrap gap-2">
+          <Chip active={selectedFlat === "all"} onClick={() => onFlat("all")}>
+            All Flats
           </Chip>
-        ))}
-      </div>
+          {flats.map((flat) => (
+            <Chip key={flat.id} active={selectedFlat === flat.name} onClick={() => onFlat(flat.name)}>
+              {flat.name}
+            </Chip>
+          ))}
+        </div>
+      )}
       {hidePresets ? null : (
         <>
           <div className="flex flex-wrap gap-2">

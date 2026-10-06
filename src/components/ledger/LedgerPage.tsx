@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ClientSearch } from "@/components/clients/ClientSearch";
 import { DateFilter } from "@/components/dashboard/DateFilter";
 import { MonthFilter } from "@/components/dashboard/MonthFilter";
 import { StayLedgerCard } from "@/components/dashboard/StayLedgerCard";
@@ -67,13 +68,23 @@ export function LedgerPage() {
   const [sheet, setSheet] = useState<"stay" | "payment" | "expense" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
 
   const range = useMemo(() => periodRange(period, state), [period, state]);
   const historical = isHistoricalRange(range);
   const asOf = historical ? range.to : undefined;
-  const stays = useMemo(() => stayLedgerRows(state, range, selectedFlat, asOf), [asOf, range, selectedFlat, state]);
-  const pending = useMemo(() => pendingLedgerRows(state, selectedFlat, asOf), [asOf, selectedFlat, state]);
-  const payments = useMemo(() => paymentLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
+  const stays = useMemo(
+    () => stayLedgerRows(state, range, selectedFlat, asOf).filter((row) => !clientId || row.clientId === clientId),
+    [asOf, clientId, range, selectedFlat, state],
+  );
+  const pending = useMemo(
+    () => pendingLedgerRows(state, selectedFlat, asOf).filter((row) => !clientId || row.clientId === clientId),
+    [asOf, clientId, selectedFlat, state],
+  );
+  const payments = useMemo(
+    () => paymentLedgerRows(state, range, selectedFlat).filter((row) => !clientId || row.clientId === clientId),
+    [clientId, range, selectedFlat, state],
+  );
   const expenses = useMemo(() => expenseLedgerRows(state, range, selectedFlat), [range, selectedFlat, state]);
   const totals = useMemo(() => dashboardTotals(state, range, selectedFlat), [range, selectedFlat, state]);
   const reconciled = operationalReconciled(state, range, selectedFlat, totals);
@@ -145,6 +156,7 @@ export function LedgerPage() {
         </Button>
       </div>
       <h1 className="page-title">Ledger</h1>
+      <ClientSearch selectedId={clientId} onSelect={setClientId} />
       <div className="flex gap-1 overflow-x-auto">
         {tabs.map((tab) => (
           <button

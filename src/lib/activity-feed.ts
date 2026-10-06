@@ -26,6 +26,7 @@ export type ActivityFeedItem = {
   detail?: string;
   remainingAfter?: number;
   flat: string;
+  clientId: string | null;
   entityType: ActivityEntity | null;
   entityId: string;
   voided: boolean;
@@ -55,6 +56,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       amount,
       signed: false,
       flat,
+      clientId: stay.clientId,
       entityType: "Stay",
       entityId: stay.id,
       voided: Boolean(stay.voided),
@@ -71,6 +73,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
         amount: rent.amount,
         signed: false,
         flat,
+        clientId: stay.clientId,
         entityType: "Stay",
         entityId: stay.id,
         voided: Boolean(rent.voided || stay.voided),
@@ -103,6 +106,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       detail: `${methodLabel(payment.method)} · Received by ${receiverName(state, payment.receivedById)}`,
       remainingAfter: remainingByPayment.get(payment.id),
       flat,
+      clientId: payment.clientId,
       entityType: "Payment",
       entityId: payment.id,
       voided: Boolean(payment.voided),
@@ -123,6 +127,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       signed: false,
       detail: methodLabel(expense.method),
       flat,
+      clientId: null,
       entityType: "Expense",
       entityId: expense.id,
       voided: Boolean(expense.voided),
@@ -143,6 +148,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       amount: item.amount,
       signed: false,
       flat,
+      clientId: item.clientId,
       entityType: "Security",
       entityId: item.id,
       voided: Boolean(item.voided),
@@ -162,6 +168,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       amount: item.amount,
       signed: false,
       flat: item.flatId ? flatName(state, item.flatId) : "",
+      clientId: item.clientId,
       entityType: "Stay",
       entityId: item.stayId,
       voided: Boolean(item.voided),
@@ -180,6 +187,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       amount: item.amount,
       signed: false,
       flat: "",
+      clientId: null,
       entityType: null,
       entityId: item.id,
       voided: Boolean(item.voided),
@@ -203,6 +211,7 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
       amount: 0,
       signed: false,
       flat: "",
+      clientId: activityClientId(state, entityType, audit.entityId),
       entityType,
       entityId: audit.entityId,
       voided: false,
@@ -215,12 +224,24 @@ export function activityFeed(state: LedgerState): ActivityFeedItem[] {
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id.localeCompare(b.id)));
 }
 
+function activityClientId(
+  state: LedgerState,
+  entityType: ActivityEntity | null,
+  entityId: string,
+): string | null {
+  if (entityType === "Stay") return state.stays.find((item) => item.id === entityId)?.clientId ?? null;
+  if (entityType === "Payment") return state.payments.find((item) => item.id === entityId)?.clientId ?? null;
+  if (entityType === "Security") return state.security.find((item) => item.id === entityId)?.clientId ?? null;
+  return null;
+}
+
 export function filterActivityFeed(
   items: ActivityFeedItem[],
   opts: {
     range: DateRange;
     flat: string;
     kind: "all" | ActivityKind;
+    clientId?: string | null;
     includeVoided?: boolean;
   },
 ): ActivityFeedItem[] {
@@ -228,6 +249,7 @@ export function filterActivityFeed(
     if (!opts.includeVoided && item.voided) return false;
     if (opts.kind !== "all" && item.kind !== opts.kind) return false;
     if (!inRange(item.at, opts.range)) return false;
+    if (opts.clientId && item.clientId !== opts.clientId) return false;
     if (opts.flat !== "all") {
       const wanted = opts.flat.toLowerCase();
       if ((item.flat || "").toLowerCase() !== wanted) return false;

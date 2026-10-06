@@ -120,13 +120,14 @@ export function findClientByPhone(state: LedgerState, raw: string | null | undef
   return state.clients.find((client) => samePhone(client.phone, phone)) ?? null;
 }
 
-export function suggestClients(state: LedgerState, query: string) {
+export function suggestClients(state: LedgerState, query: string, opts?: { limit?: number; minChars?: number }) {
   const q = query.trim().toLowerCase();
-  if (q.length < 2) return [];
   const digits = q.replace(/\D/g, "");
+  const minChars = opts?.minChars ?? 2;
+  if (q.length < minChars && digits.length < 3) return [];
   return state.clients
     .filter((client) => {
-      if (client.name.toLowerCase().includes(q)) return true;
+      if (q && client.name.toLowerCase().includes(q)) return true;
       if (digits.length >= 3) {
         const phoneDigits = (client.phone ?? "").replace(/\D/g, "");
         const local = displayPhone(client.phone).replace(/\D/g, "");
@@ -134,7 +135,7 @@ export function suggestClients(state: LedgerState, query: string) {
       }
       return false;
     })
-    .slice(0, 5);
+    .slice(0, opts?.limit ?? 5);
 }
 
 export function matchClient(

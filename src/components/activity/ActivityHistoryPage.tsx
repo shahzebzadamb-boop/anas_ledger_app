@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ActivityCard } from "@/components/activity/ActivityCard";
+import { ClientSearch } from "@/components/clients/ClientSearch";
 import { DateFilter } from "@/components/dashboard/DateFilter";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { activityFeed, filterActivityFeed, type ActivityKind } from "@/lib/activity-feed";
 import { rangeForPreset, karachiYmd, karachiMonthRange } from "@/lib/dates";
 import { flatsForChips } from "@/lib/flats";
+import { clientProfile } from "@/lib/ledger";
+import { formatPKR } from "@/lib/money";
 import { useLedger } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { DateFilterPreset, DateRange } from "@/types";
@@ -32,13 +35,16 @@ export function ActivityHistoryPage() {
   const [custom, setCustom] = useState<DateRange>(monthRange);
   const [flat, setFlat] = useState("all");
   const [kind, setKind] = useState<"all" | ActivityKind>("all");
+  const [clientId, setClientId] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const range = useMemo(() => rangeForPreset(preset, custom), [custom, preset]);
   const items = useMemo(() => {
     const feed = activityFeed(state);
-    return filterActivityFeed(feed, { range, flat, kind, includeVoided: true });
-  }, [flat, kind, range, state]);
+    return filterActivityFeed(feed, { range, flat, kind, clientId, includeVoided: true });
+  }, [clientId, flat, kind, range, state]);
   const chips = flatsForChips(state);
+  const selected = clientId ? state.clients.find((item) => item.id === clientId) : null;
+  const profile = clientId ? clientProfile(clientId, state) : null;
 
   useEffect(() => {
     if (!openId) return;
@@ -51,6 +57,13 @@ export function ActivityHistoryPage() {
   return (
     <div className="space-y-3.5">
       <PageHeader title="Activity History" subtitle="Every stay, payment, expense, and correction." />
+      <ClientSearch
+        selectedId={clientId}
+        onSelect={(id) => {
+          setClientId(id);
+          setLimit(PAGE);
+        }}
+      />
       <DateFilter
         flats={chips}
         selectedFlat={flat}
@@ -60,6 +73,7 @@ export function ActivityHistoryPage() {
         }}
         preset={preset}
         custom={custom}
+        hideFlats
         onPreset={(value) => {
           setPreset(value);
           setLimit(PAGE);
@@ -85,6 +99,33 @@ export function ActivityHistoryPage() {
           </button>
         ))}
       </div>
+      <DateFilter
+        flats={chips}
+        selectedFlat={flat}
+        onFlat={(value) => {
+          setFlat(value);
+          setLimit(PAGE);
+        }}
+        preset={preset}
+        custom={custom}
+        hidePresets
+        onPreset={() => undefined}
+        onCustom={() => undefined}
+      />
+      {selected && profile ? (
+        <div className="rounded-2xl border border-border bg-surface px-3.5 py-3">
+          <p className="text-sm font-medium">{selected.name}</p>
+          {profile.lastFlat ? <p className="mt-0.5 text-xs font-normal text-muted">{profile.lastFlat}</p> : null}
+          <p className="mt-2 text-xs font-normal text-muted">
+            Business <span className="money text-foreground">{formatPKR(profile.lifetimeBusiness)}</span>
+            {" · "}Received <span className="money text-primary">{formatPKR(profile.totalReceived)}</span>
+            {" · "}Pending{" "}
+            <span className={`money ${profile.currentlyPending > 0 ? "text-warning" : "text-foreground"}`}>
+              {formatPKR(profile.currentlyPending)}
+            </span>
+          </p>
+        </div>
+      ) : null}
       {visible.length === 0 ? (
         <p className="rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm font-normal text-muted">
           No activity in this period.
