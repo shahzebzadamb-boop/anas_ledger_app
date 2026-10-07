@@ -14,6 +14,15 @@ import { normalizePhone } from "@/lib/phone";
 import type { CorrectionDraft } from "@/lib/parse-correction";
 import type { ConfirmableDraft } from "@/lib/parse-quick-entry";
 import type { MigrationPatch } from "@/lib/parse-migration-update";
+import {
+  dayBeforeIso,
+  findPartnerByName,
+  isAnasName,
+  khizerPartner,
+  seedKhizerPartner,
+  validateAssignmentShares,
+  ymdKeyFromIso,
+} from "@/lib/partners";
 import { canonicalReceiverName, DEFAULT_RECEIVER_NAME, DEFAULT_RECEIVERS } from "@/lib/receivers";
 import { createId } from "@/lib/utils";
 import type {
@@ -21,6 +30,9 @@ import type {
   Expense,
   ExpenseCategory,
   LedgerState,
+  Partner,
+  PartnerAssignment,
+  PartnerPayment,
   Payment,
   PaymentMethod,
   PendingDecision,
@@ -133,7 +145,7 @@ export type Action =
       };
     }
   | { type: "VOID_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security"; entityId: string } }
-  | { type: "UNDO_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security" | "ProfitShare"; entityId: string } }
+  | { type: "UNDO_ENTRY"; payload: { entityType: "Stay" | "Payment" | "Expense" | "Security" | "ProfitShare" | "PartnerPayment"; entityId: string } }
   | {
       type: "RECORD_PROFIT_SHARE";
       payload: {
@@ -150,6 +162,64 @@ export type Action =
       type: "UPDATE_PROFIT_SHARE";
       payload: {
         id: string;
+        amount?: number;
+        method?: PaymentMethod;
+        paidAt?: string;
+        note?: string | null;
+        profitYear?: number;
+        profitMonth?: number;
+      };
+    }
+  | {
+      type: "ADD_PARTNER";
+      payload: { name: string; phone?: string | null; notes?: string | null; active?: boolean };
+    }
+  | {
+      type: "EDIT_PARTNER";
+      payload: { id: string; name?: string; phone?: string | null; notes?: string | null; active?: boolean };
+    }
+  | { type: "ARCHIVE_PARTNER"; payload: { id: string } }
+  | {
+      type: "ASSIGN_PARTNER";
+      payload: {
+        partnerId: string;
+        flatId: string;
+        sharePercent: number;
+        effectiveFrom: string;
+        effectiveUntil?: string | null;
+      };
+    }
+  | {
+      type: "EDIT_ASSIGNMENT";
+      payload: {
+        id: string;
+        sharePercent?: number;
+        effectiveFrom?: string;
+        effectiveUntil?: string | null;
+        voided?: boolean;
+      };
+    }
+  | {
+      type: "CHANGE_PARTNER_SHARE";
+      payload: { assignmentId: string; sharePercent: number; effectiveFrom: string };
+    }
+  | {
+      type: "RECORD_PARTNER_PAYMENT";
+      payload: {
+        partnerId: string;
+        profitYear: number;
+        profitMonth: number;
+        amount: number;
+        method: PaymentMethod;
+        paidAt: string;
+        note?: string | null;
+      };
+    }
+  | {
+      type: "UPDATE_PARTNER_PAYMENT";
+      payload: {
+        id: string;
+        partnerId?: string;
         amount?: number;
         method?: PaymentMethod;
         paidAt?: string;
@@ -626,8 +696,74 @@ function withDefaultReceivers(state: LedgerState): LedgerState {
   return { ...state, receivers };
 }
 
+function withDefaultPartners(state: LedgerState): LedgerState {
+  const partners = [...(state.partners ?? [])];
+  if (!partners.some((item) => item.id === seedKhizerPartner().id || item.name.toLowerCase() === "khizer")) {
+    partners.push(seedKhizerPartner());
+  }
+  const partnerPayments = [...(state.partnerPayments ?? [])];
+  const known = new Set(partnerPayments.map((item) => item.id));
+  for (const item of state.profitSharePayments ?? []) {
+    if (known.has(item.id)) continue;
+    const partner =
+      findPartnerByName({ ...state, partners }, item.partnerName) ??
+      (item.partnerName.toLowerCase() === "khizer" ? khizerPartner({ ...state, partners }) : undefined);
+    if (!partner) continue;
+    partnerPayments.push({
+      id: item.id,
+      partnerId: partner.id,
+      profitYear: item.profitYear,
+      profitMonth: item.profitMonth,
+      amount: item.amount,
+      method: item.method,
+      paidAt: item.paidAt,
+      note: item.note ?? null,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      voided: item.voided ?? false,
+    });
+    known.add(item.id);
+  }
+  return {
+    ...state,
+    partners,
+    partnerAssignments: state.partnerAssignments ?? [],
+    partnerPayments,
+  };
+}
+
+function profitShareFromPartnerPayment(state: LedgerState, payment: PartnerPayment): ProfitSharePayment {
+  const partner = (state.partners ?? []).find((item) => item.id === payment.partnerId);
+  return {
+    id: payment.id,
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+    profitYear: payment.profitYear,
+    profitMonth: payment.profitMonth,
+    partnerName: partner?.name ?? "Khizer",
+    amount: payment.amount,
+    method: payment.method,
+    paidAt: payment.paidAt,
+    note: payment.note,
+    voided: payment.voided,
+  };
+}
+
+function upsertProfitShare(state: LedgerState, payment: PartnerPayment): ProfitSharePayment[] {
+  const row = profitShareFromPartnerPayment(state, payment);
+  const list = state.profitSharePayments ?? [];
+  if (list.some((item) => item.id === payment.id)) {
+    return list.map((item) => (item.id === payment.id ? row : item));
+  }
+  return [row, ...list];
+}
+
+function ensurePartnerReady(state: LedgerState): LedgerState {
+  return withDefaultPartners(withDefaultReceivers(state));
+}
+
 function normalizeState(state: LedgerState): LedgerState {
-  return withDefaultReceivers({
+  return withDefaultPartners(withDefaultReceivers({
     ...state,
     flats: (state.flats ?? []).map((flat, index) => ({
       ...flat,
@@ -662,6 +798,22 @@ function normalizeState(state: LedgerState): LedgerState {
       note: item.note ?? null,
       voided: item.voided ?? false,
     })),
+    partners: (state.partners ?? []).map((item) => ({
+      ...item,
+      phone: item.phone ?? null,
+      notes: item.notes ?? null,
+      active: item.active !== false,
+    })),
+    partnerAssignments: (state.partnerAssignments ?? []).map((item) => ({
+      ...item,
+      effectiveUntil: item.effectiveUntil ?? null,
+      voided: item.voided ?? false,
+    })),
+    partnerPayments: (state.partnerPayments ?? []).map((item) => ({
+      ...item,
+      note: item.note ?? null,
+      voided: item.voided ?? false,
+    })),
     reviews: state.reviews.map((item) => ({
       ...item,
       month: item.month ?? item.sourceSheet,
@@ -673,7 +825,7 @@ function normalizeState(state: LedgerState): LedgerState {
       importedAt: item.importedAt ?? null,
       updatedAt: item.updatedAt ?? null,
     })),
-  });
+  }));
 }
 
 function reducer(state: LedgerState, action: Action): LedgerState {
@@ -1034,45 +1186,283 @@ function reducer(state: LedgerState, action: Action): LedgerState {
       });
       return syncStayPending(next, row.stayId);
     }
+    case "ADD_PARTNER": {
+      const ready = ensurePartnerReady(state);
+      const name = action.payload.name.trim();
+      if (!name) return state;
+      if (isAnasName(name)) return state;
+      if (findPartnerByName(ready, name)) return state;
+      const row: Partner = {
+        id: createId("ptr"),
+        name,
+        phone: action.payload.phone?.trim() || null,
+        notes: action.payload.notes?.trim() || null,
+        active: action.payload.active !== false,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+      };
+      return withAudit(
+        { ...ready, partners: [...ready.partners, row] },
+        {
+          action: "ADD_PARTNER",
+          entityType: "Partner",
+          entityId: row.id,
+          originalValue: null,
+          newValue: row,
+          reason: "Add partner",
+        },
+      );
+    }
+    case "EDIT_PARTNER": {
+      const ready = ensurePartnerReady(state);
+      const row = ready.partners.find((item) => item.id === action.payload.id);
+      if (!row) return state;
+      const name = action.payload.name?.trim() ?? row.name;
+      if (!name || isAnasName(name)) return state;
+      const duplicate = findPartnerByName(ready, name);
+      if (duplicate && duplicate.id !== row.id) return state;
+      const nextRow: Partner = {
+        ...row,
+        name,
+        phone: action.payload.phone === undefined ? row.phone : action.payload.phone?.trim() || null,
+        notes: action.payload.notes === undefined ? row.notes : action.payload.notes?.trim() || null,
+        active: action.payload.active ?? row.active,
+        updatedAt: nowISO(),
+      };
+      return withAudit(
+        { ...ready, partners: ready.partners.map((item) => (item.id === row.id ? nextRow : item)) },
+        {
+          action: "EDIT_PARTNER",
+          entityType: "Partner",
+          entityId: row.id,
+          originalValue: row,
+          newValue: nextRow,
+          reason: "Edit partner",
+        },
+      );
+    }
+    case "ARCHIVE_PARTNER": {
+      const ready = ensurePartnerReady(state);
+      const row = ready.partners.find((item) => item.id === action.payload.id);
+      if (!row || !row.active) return state;
+      const nextRow = { ...row, active: false, updatedAt: nowISO() };
+      return withAudit(
+        { ...ready, partners: ready.partners.map((item) => (item.id === row.id ? nextRow : item)) },
+        {
+          action: "EDIT_PARTNER",
+          entityType: "Partner",
+          entityId: row.id,
+          originalValue: row,
+          newValue: nextRow,
+          reason: "Archive partner",
+        },
+      );
+    }
+    case "ASSIGN_PARTNER": {
+      const ready = ensurePartnerReady(state);
+      const partner = ready.partners.find((item) => item.id === action.payload.partnerId);
+      const flat = ready.flats.find((item) => item.id === action.payload.flatId);
+      if (!partner || !flat) return state;
+      const error = validateAssignmentShares(ready, action.payload);
+      if (error) return state;
+      const row: PartnerAssignment = {
+        id: createId("pasn"),
+        partnerId: partner.id,
+        flatId: flat.id,
+        sharePercent: action.payload.sharePercent,
+        effectiveFrom: action.payload.effectiveFrom,
+        effectiveUntil: action.payload.effectiveUntil ?? null,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        voided: false,
+      };
+      return withAudit(
+        { ...ready, partnerAssignments: [row, ...ready.partnerAssignments] },
+        {
+          action: "ASSIGN_PARTNER",
+          entityType: "PartnerAssignment",
+          entityId: row.id,
+          originalValue: null,
+          newValue: row,
+          reason: "Assign partner",
+        },
+      );
+    }
+    case "EDIT_ASSIGNMENT": {
+      const ready = ensurePartnerReady(state);
+      const row = ready.partnerAssignments.find((item) => item.id === action.payload.id);
+      if (!row || row.voided) return state;
+      const sharePercent = action.payload.sharePercent ?? row.sharePercent;
+      const effectiveFrom = action.payload.effectiveFrom ?? row.effectiveFrom;
+      const effectiveUntil = action.payload.effectiveUntil === undefined ? row.effectiveUntil : action.payload.effectiveUntil;
+      if (action.payload.sharePercent != null && ymdKeyFromIso(row.effectiveFrom) < ymdKeyFromIso(nowISO())) {
+        return reducer(ready, {
+          type: "CHANGE_PARTNER_SHARE",
+          payload: { assignmentId: row.id, sharePercent: action.payload.sharePercent, effectiveFrom },
+        });
+      }
+      const error = validateAssignmentShares(ready, {
+        partnerId: row.partnerId,
+        flatId: row.flatId,
+        sharePercent,
+        effectiveFrom,
+        effectiveUntil,
+        excludeId: row.id,
+      });
+      if (error) return state;
+      const nextRow: PartnerAssignment = {
+        ...row,
+        sharePercent,
+        effectiveFrom,
+        effectiveUntil,
+        voided: action.payload.voided ?? row.voided,
+        updatedAt: nowISO(),
+      };
+      return withAudit(
+        {
+          ...ready,
+          partnerAssignments: ready.partnerAssignments.map((item) => (item.id === row.id ? nextRow : item)),
+        },
+        {
+          action: "EDIT_ASSIGNMENT",
+          entityType: "PartnerAssignment",
+          entityId: row.id,
+          originalValue: row,
+          newValue: nextRow,
+          reason: "Edit assignment",
+        },
+      );
+    }
+    case "CHANGE_PARTNER_SHARE": {
+      const ready = ensurePartnerReady(state);
+      const row = ready.partnerAssignments.find((item) => item.id === action.payload.assignmentId);
+      if (!row || row.voided) return state;
+      if (!Number.isInteger(action.payload.sharePercent) || action.payload.sharePercent < 1 || action.payload.sharePercent > 100) {
+        return state;
+      }
+      const newFrom = action.payload.effectiveFrom;
+      const closing: PartnerAssignment =
+        ymdKeyFromIso(newFrom) <= ymdKeyFromIso(row.effectiveFrom)
+          ? { ...row, voided: true, updatedAt: nowISO() }
+          : { ...row, effectiveUntil: dayBeforeIso(newFrom), updatedAt: nowISO() };
+      const closedState = {
+        ...ready,
+        partnerAssignments: ready.partnerAssignments.map((item) => (item.id === row.id ? closing : item)),
+      };
+      const created: PartnerAssignment = {
+        id: createId("pasn"),
+        partnerId: row.partnerId,
+        flatId: row.flatId,
+        sharePercent: action.payload.sharePercent,
+        effectiveFrom: newFrom,
+        effectiveUntil: null,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+        voided: false,
+      };
+      const error = validateAssignmentShares(closedState, {
+        partnerId: created.partnerId,
+        flatId: created.flatId,
+        sharePercent: created.sharePercent,
+        effectiveFrom: created.effectiveFrom,
+        effectiveUntil: created.effectiveUntil,
+      });
+      if (error) return state;
+      let next = withAudit(
+        { ...closedState, partnerAssignments: [created, ...closedState.partnerAssignments] },
+        {
+          action: "EDIT_ASSIGNMENT",
+          entityType: "PartnerAssignment",
+          entityId: row.id,
+          originalValue: row,
+          newValue: closing,
+          reason: "Close previous share",
+        },
+      );
+      next = withAudit(next, {
+        action: "ASSIGN_PARTNER",
+        entityType: "PartnerAssignment",
+        entityId: created.id,
+        originalValue: null,
+        newValue: created,
+        reason: "New share from date",
+      });
+      return next;
+    }
+    case "RECORD_PARTNER_PAYMENT":
     case "RECORD_PROFIT_SHARE": {
+      const ready = ensurePartnerReady(state);
       const amount = action.payload.amount;
       if (!isValidMoneyAmount(amount) || !isPlausibleLedgerAmount(amount)) return state;
       const year = action.payload.profitYear;
       const month = action.payload.profitMonth;
       if (!Number.isInteger(year) || year < 2000 || year > 2100) return state;
       if (!Number.isInteger(month) || month < 1 || month > 12) return state;
-      const row: ProfitSharePayment = {
-        id: createId("psp"),
-        createdAt: nowISO(),
-        updatedAt: nowISO(),
+      const partner =
+        action.type === "RECORD_PARTNER_PAYMENT"
+          ? ready.partners.find((item) => item.id === action.payload.partnerId)
+          : findPartnerByName(ready, action.payload.partnerName?.trim() || "Khizer") ?? khizerPartner(ready);
+      if (!partner) return state;
+      const row: PartnerPayment = {
+        id: createId("ppay"),
+        partnerId: partner.id,
         profitYear: year,
         profitMonth: month,
-        partnerName: action.payload.partnerName?.trim() || "Khizer",
         amount,
         method: action.payload.method,
         paidAt: action.payload.paidAt,
         note: action.payload.note?.trim() || null,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
         voided: false,
       };
-      return withAudit(
-        { ...state, profitSharePayments: [row, ...(state.profitSharePayments ?? [])] },
-        {
-          action: "MANUAL_EDIT",
-          entityType: "ProfitShare",
-          entityId: row.id,
-          originalValue: null,
-          newValue: row,
-          reason: "Record Khizer payment",
-        },
-      );
+      const next: LedgerState = {
+        ...ready,
+        partnerPayments: [row, ...ready.partnerPayments],
+        profitSharePayments: upsertProfitShare(ready, row),
+      };
+      return withAudit(next, {
+        action: "PARTNER_PAYMENT",
+        entityType: "PartnerPayment",
+        entityId: row.id,
+        originalValue: null,
+        newValue: row,
+        reason: "Record partner payment",
+      });
     }
+    case "UPDATE_PARTNER_PAYMENT":
     case "UPDATE_PROFIT_SHARE": {
-      const row = (state.profitSharePayments ?? []).find((item) => item.id === action.payload.id);
+      const ready = ensurePartnerReady(state);
+      const row =
+        ready.partnerPayments.find((item) => item.id === action.payload.id) ??
+        (() => {
+          const legacy = ready.profitSharePayments.find((item) => item.id === action.payload.id);
+          if (!legacy || legacy.voided) return undefined;
+          const partner = findPartnerByName(ready, legacy.partnerName) ?? khizerPartner(ready);
+          if (!partner) return undefined;
+          return {
+            id: legacy.id,
+            partnerId: partner.id,
+            profitYear: legacy.profitYear,
+            profitMonth: legacy.profitMonth,
+            amount: legacy.amount,
+            method: legacy.method,
+            paidAt: legacy.paidAt,
+            note: legacy.note,
+            createdAt: legacy.createdAt,
+            updatedAt: legacy.updatedAt,
+            voided: legacy.voided,
+          } satisfies PartnerPayment;
+        })();
       if (!row || row.voided) return state;
       const amount = action.payload.amount ?? row.amount;
       if (!isValidMoneyAmount(amount) || !isPlausibleLedgerAmount(amount)) return state;
-      const nextRow: ProfitSharePayment = {
+      const nextRow: PartnerPayment = {
         ...row,
+        partnerId:
+          action.type === "UPDATE_PARTNER_PAYMENT" && action.payload.partnerId
+            ? action.payload.partnerId
+            : row.partnerId,
         amount,
         method: action.payload.method ?? row.method,
         paidAt: action.payload.paidAt ?? row.paidAt,
@@ -1081,20 +1471,21 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         profitMonth: action.payload.profitMonth ?? row.profitMonth,
         updatedAt: nowISO(),
       };
-      return withAudit(
-        {
-          ...state,
-          profitSharePayments: (state.profitSharePayments ?? []).map((item) => (item.id === row.id ? nextRow : item)),
-        },
-        {
-          action: "MANUAL_EDIT",
-          entityType: "ProfitShare",
-          entityId: row.id,
-          originalValue: row,
-          newValue: nextRow,
-          reason: "Manual edit",
-        },
-      );
+      const next: LedgerState = {
+        ...ready,
+        partnerPayments: ready.partnerPayments.some((item) => item.id === row.id)
+          ? ready.partnerPayments.map((item) => (item.id === row.id ? nextRow : item))
+          : [nextRow, ...ready.partnerPayments],
+        profitSharePayments: upsertProfitShare(ready, nextRow),
+      };
+      return withAudit(next, {
+        action: "MANUAL_EDIT",
+        entityType: "PartnerPayment",
+        entityId: row.id,
+        originalValue: row,
+        newValue: nextRow,
+        reason: "Manual edit",
+      });
     }
     case "VOID_ENTRY":
       return applyCorrection(
@@ -1131,26 +1522,49 @@ function reducer(state: LedgerState, action: Action): LedgerState {
         "MANUAL_EDIT",
       );
     case "UNDO_ENTRY": {
-      if (action.payload.entityType === "ProfitShare") {
-        const row = (state.profitSharePayments ?? []).find((item) => item.id === action.payload.entityId);
-        if (!row || row.voided) return state;
-        const nextRow = { ...row, voided: true, updatedAt: nowISO() };
+      if (action.payload.entityType === "ProfitShare" || action.payload.entityType === "PartnerPayment") {
+        const ready = ensurePartnerReady(state);
+        const payment = ready.partnerPayments.find((item) => item.id === action.payload.entityId);
+        const legacy = ready.profitSharePayments.find((item) => item.id === action.payload.entityId);
+        if ((!payment || payment.voided) && (!legacy || legacy.voided)) return state;
+        const now = nowISO();
+        const nextPayment = payment ? { ...payment, voided: true, updatedAt: now } : null;
+        const nextLegacy = legacy
+          ? { ...legacy, voided: true, updatedAt: now }
+          : nextPayment
+            ? { ...profitShareFromPartnerPayment(ready, nextPayment), voided: true, updatedAt: now }
+            : null;
         return withAudit(
           {
-            ...state,
-            profitSharePayments: (state.profitSharePayments ?? []).map((item) => (item.id === row.id ? nextRow : item)),
+            ...ready,
+            partnerPayments: nextPayment
+              ? ready.partnerPayments.map((item) => (item.id === nextPayment.id ? nextPayment : item))
+              : ready.partnerPayments,
+            profitSharePayments: nextLegacy
+              ? ready.profitSharePayments.some((item) => item.id === nextLegacy.id)
+                ? ready.profitSharePayments.map((item) => (item.id === nextLegacy.id ? nextLegacy : item))
+                : [nextLegacy, ...ready.profitSharePayments]
+              : ready.profitSharePayments,
           },
           {
             action: "UNDO",
-            entityType: "ProfitShare",
-            entityId: row.id,
-            originalValue: row,
-            newValue: nextRow,
+            entityType: "PartnerPayment",
+            entityId: action.payload.entityId,
+            originalValue: payment ?? legacy,
+            newValue: nextPayment ?? nextLegacy,
             reason: "Undo this entry?",
           },
         );
       }
-      return applyUndo(state, action.payload.entityType, action.payload.entityId);
+      if (
+        action.payload.entityType === "Stay" ||
+        action.payload.entityType === "Payment" ||
+        action.payload.entityType === "Expense" ||
+        action.payload.entityType === "Security"
+      ) {
+        return applyUndo(state, action.payload.entityType, action.payload.entityId);
+      }
+      return state;
     }
     case "GENERATE_RECEIPT":
     case "MARK_RECEIPT_SHARE_ATTEMPTED":

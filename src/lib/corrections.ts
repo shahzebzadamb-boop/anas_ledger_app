@@ -307,7 +307,16 @@ export function correctionPreview(
 export function withAudit(
   state: LedgerState,
   entry: {
-    action: "QUICK_ENTRY" | "MANUAL_EDIT" | "VOID" | "UNDO";
+    action:
+      | "QUICK_ENTRY"
+      | "MANUAL_EDIT"
+      | "VOID"
+      | "UNDO"
+      | "ADD_PARTNER"
+      | "EDIT_PARTNER"
+      | "ASSIGN_PARTNER"
+      | "EDIT_ASSIGNMENT"
+      | "PARTNER_PAYMENT";
     entityType: string;
     entityId: string;
     originalValue: unknown;

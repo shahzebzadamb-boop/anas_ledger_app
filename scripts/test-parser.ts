@@ -1132,8 +1132,8 @@ if (
     octEarn.puranaRecovered !== 20000 ||
     octEarn.totalCashReceived !== 40000 ||
     octEarn.netCashProfit !== 40000 ||
-    octEarn.anasShare !== 20000 ||
-    octEarn.khizerShare !== 20000 ||
+    octEarn.allocations.find((line) => line.partnerName === "Anas")?.amount !== 40000 ||
+    octEarn.allocations.some((line) => line.partnerId && line.amount !== 0) ||
     septEarn.currentReceived !== 450000 ||
     septEarn.puranaRecovered !== 0 ||
     septEarn.expenses !== 80000 ||
@@ -1170,7 +1170,19 @@ if (
       category: "ELECTRICITY",
       description: "Bill",
       method: "CASH",
+      flat: "802-A",
       spentAt: "2026-10-10T00:00:00+05:00",
+    },
+  });
+  earn = reducer(earn, { type: "HYDRATE", payload: earn });
+  const khizer = earn.partners.find((item) => item.name === "Khizer");
+  earn = reducer(earn, {
+    type: "ASSIGN_PARTNER",
+    payload: {
+      partnerId: khizer!.id,
+      flatId: "flat_802-A",
+      sharePercent: 50,
+      effectiveFrom: "2026-10-01T00:00:00+05:00",
     },
   });
   const beforePay = monthEarnings(earn, 2026, 10, new Date("2026-10-31T12:00:00+05:00"));
@@ -1210,15 +1222,15 @@ if (
   const voidedKept = earn.profitSharePayments.some((item) => item.voided && item.amount === 30000);
   if (
     beforePay.netCashProfit !== 140000 ||
-    beforePay.anasShare !== 70000 ||
-    beforePay.khizerShare !== 70000 ||
-    afterTwo.khizerPaid !== 50000 ||
-    afterTwo.stillOwed !== 20000 ||
+    beforePay.allocations.find((line) => line.partnerName === "Anas")?.amount !== 70000 ||
+    beforePay.allocations.find((line) => line.partnerName === "Khizer")?.amount !== 70000 ||
+    afterTwo.allocations.find((line) => line.partnerName === "Khizer")?.paid !== 50000 ||
+    afterTwo.allocations.find((line) => line.partnerName === "Khizer")?.remaining !== 20000 ||
     afterTwo.payments.length !== 2 ||
-    afterUndo.khizerPaid !== 20000 ||
+    afterUndo.allocations.find((line) => line.partnerName === "Khizer")?.paid !== 20000 ||
     afterUndo.payments.length !== 1 ||
-    afterEdit.khizerPaid !== 25000 ||
-    afterEdit.stillOwed !== 45000 ||
+    afterEdit.allocations.find((line) => line.partnerName === "Khizer")?.paid !== 25000 ||
+    afterEdit.allocations.find((line) => line.partnerName === "Khizer")?.remaining !== 45000 ||
     !voidedKept ||
     earn.profitSharePayments.length !== 2
   ) {

@@ -1,5 +1,6 @@
 import { formatPKR } from "@/lib/money";
 import type { DashboardTotals } from "@/types";
+import type { MonthEarnings } from "@/lib/earnings";
 
 function escapePdf(text: string) {
   return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
@@ -55,39 +56,28 @@ export function buildReportPdf(input: {
   return linesToPdf(lines);
 }
 
-export function buildOwnerEarningsPdf(
-  months: {
-    label: string;
-    live?: boolean;
-    currentReceived: number;
-    puranaRecovered: number;
-    totalCashReceived: number;
-    expenses: number;
-    netCashProfit: number;
-    anasShare: number;
-    khizerShare: number;
-    khizerPaid: number;
-    stillOwed: number;
-    overpaid: number;
-  }[],
-): Blob {
+export function buildOwnerEarningsPdf(months: MonthEarnings[]): Blob {
   const lines = ["ANAS LEDGER", "PRIVATE OWNER SUMMARY", "Do not share with clients", ""];
   for (const month of months) {
     lines.push(
       `${month.label}${month.live ? " (Live)" : ""}`,
-      `Current month received ${formatPKR(month.currentReceived)}`,
+      `Cash received ${formatPKR(month.totalCashReceived)}`,
       `Purana Khata recovered ${formatPKR(month.puranaRecovered)}`,
-      `Total cash received ${formatPKR(month.totalCashReceived)}`,
       `Expenses ${formatPKR(month.expenses)}`,
       `Net cash profit ${formatPKR(month.netCashProfit)}`,
-      `Anas 50% ${formatPKR(month.anasShare)}`,
-      `Khizer 50% ${formatPKR(month.khizerShare)}`,
-      `Khizer paid ${formatPKR(month.khizerPaid)}`,
-      month.overpaid > 0
-        ? `Overpaid to Khizer ${formatPKR(month.overpaid)}`
-        : `Still owed to Khizer ${formatPKR(month.stillOwed)}`,
-      "",
     );
+    for (const line of month.allocations) {
+      const pct = line.sharePercent > 0 ? ` ${line.sharePercent}%` : "";
+      lines.push(`${line.partnerName}${pct} ${formatPKR(line.amount)}`);
+      if (line.partnerId) {
+        lines.push(
+          line.overpaid > 0
+            ? `${line.partnerName} overpaid ${formatPKR(line.overpaid)}`
+            : `${line.partnerName} remaining ${formatPKR(line.remaining)}`,
+        );
+      }
+    }
+    lines.push("");
   }
   return linesToPdf(lines, 12);
 }

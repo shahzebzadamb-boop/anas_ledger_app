@@ -154,6 +154,42 @@ export type ProfitSharePayment = {
   voided: boolean;
 };
 
+export type Partner = {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PartnerAssignment = {
+  id: string;
+  partnerId: string;
+  flatId: string;
+  sharePercent: number;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  voided: boolean;
+};
+
+export type PartnerPayment = {
+  id: string;
+  partnerId: string;
+  profitYear: number;
+  profitMonth: number;
+  amount: number;
+  method: PaymentMethod;
+  paidAt: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  voided: boolean;
+};
+
 export type ActivityLog = {
   id: string;
   createdAt: string;
@@ -272,6 +308,9 @@ export type LedgerState = {
   monthlyReports: MonthlyReportRecord[];
   receipts: Receipt[];
   profitSharePayments: ProfitSharePayment[];
+  partners: Partner[];
+  partnerAssignments: PartnerAssignment[];
+  partnerPayments: PartnerPayment[];
 };
 
 export type DashboardTotals = {

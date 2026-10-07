@@ -22,5 +22,8 @@ export function emptyLedgerState(): LedgerState {
     monthlyReports: [],
     receipts: [],
     profitSharePayments: [],
+    partners: [],
+    partnerAssignments: [],
+    partnerPayments: [],
   };
 }

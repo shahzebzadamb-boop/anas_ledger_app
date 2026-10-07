@@ -4,6 +4,7 @@ import { normalizeState } from "@/lib/ledger-actions";
 import { asBool, getPool, toIso } from "@/lib/server/db";
 import { prepareLedgerDatabase } from "@/lib/server/prepare-ledger";
 import { ensureMonthlyReportsSafe } from "@/lib/server/monthly-reports";
+import { loadPartnersState } from "@/lib/server/partners";
 import { loadProfitSharePayments } from "@/lib/server/profit-share";
 import { loadReceipts } from "@/lib/server/receipts";
 import { repairKnownIntMaxRow } from "@/lib/server/repair-known-intmax";
@@ -237,11 +238,45 @@ export async function loadLedgerState(): Promise<LedgerState> {
     monthlyReports: [],
     receipts: [],
     profitSharePayments: [],
+    partners: [],
+    partnerAssignments: [],
+    partnerPayments: [],
   });
-  const [monthlyReports, receipts, profitSharePayments] = await Promise.all([
+  const [monthlyReports, receipts, profitSharePayments, partnerState] = await Promise.all([
     ensureMonthlyReportsSafe(pool, state),
     loadReceipts(pool),
     loadProfitSharePayments(pool),
+    loadPartnersState(pool),
   ]);
-  return { ...state, monthlyReports, receipts, profitSharePayments };
+  const knownPay = new Set(partnerState.partnerPayments.map((item) => item.id));
+  const mergedPayments = [...partnerState.partnerPayments];
+  for (const item of profitSharePayments) {
+    if (knownPay.has(item.id)) continue;
+    const partner =
+      partnerState.partners.find((row) => row.name === item.partnerName) ??
+      partnerState.partners.find((row) => row.name.toLowerCase() === "khizer");
+    if (!partner) continue;
+    mergedPayments.push({
+      id: item.id,
+      partnerId: partner.id,
+      profitYear: item.profitYear,
+      profitMonth: item.profitMonth,
+      amount: item.amount,
+      method: item.method,
+      paidAt: item.paidAt,
+      note: item.note,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      voided: item.voided,
+    });
+  }
+  return {
+    ...state,
+    monthlyReports,
+    receipts,
+    profitSharePayments,
+    partners: partnerState.partners,
+    partnerAssignments: partnerState.partnerAssignments,
+    partnerPayments: mergedPayments,
+  };
 }

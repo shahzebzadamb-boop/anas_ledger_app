@@ -594,11 +594,12 @@ export function toMonthlyReportRecord(computed: MonthReportComputed, existing?: 
   };
 }
 
-export function pendingCollectedFromRange(state: LedgerState, range: DateRange): number {
+export function pendingCollectedFromRange(state: LedgerState, range: DateRange, selectedFlat = "all"): number {
   return state.payments
     .filter(
       (item) =>
         isLive(item) &&
+        matchesFlat(item.flatId, selectedFlat) &&
         inRange(item.receivedAt, range) &&
         isPlausibleLedgerAmount(item.amount) &&
         isRentPayment(item, state.reviews) &&

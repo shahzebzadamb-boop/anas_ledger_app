@@ -424,6 +424,120 @@ async function persistDiff(connection: PoolConnection, before: LedgerState, afte
     );
   }
 
+  const beforePartners = ids(before.partners ?? []);
+  for (const item of after.partners ?? []) {
+    if (!beforePartners.has(item.id)) {
+      await connection.execute(
+        `INSERT INTO partners (id, createdAt, updatedAt, name, phone, notes, active)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone), notes = VALUES(notes),
+           active = VALUES(active), updatedAt = VALUES(updatedAt)`,
+        [
+          item.id,
+          toSqlDate(item.createdAt),
+          toSqlDate(item.updatedAt),
+          item.name,
+          item.phone,
+          item.notes,
+          item.active ? 1 : 0,
+        ],
+      );
+      continue;
+    }
+    const delta = changed(before.partners ?? [], after.partners ?? [], item.id);
+    if (!delta) continue;
+    await connection.execute(
+      "UPDATE partners SET updatedAt = ?, name = ?, phone = ?, notes = ?, active = ? WHERE id = ?",
+      [toSqlDate(item.updatedAt), item.name, item.phone, item.notes, item.active ? 1 : 0, item.id],
+    );
+  }
+
+  const beforeAssignments = ids(before.partnerAssignments ?? []);
+  for (const item of after.partnerAssignments ?? []) {
+    if (!beforeAssignments.has(item.id)) {
+      await connection.execute(
+        `INSERT INTO partner_assignments (
+           id, createdAt, updatedAt, partnerId, flatId, sharePercent, effectiveFrom, effectiveUntil, voided
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          toSqlDate(item.createdAt),
+          toSqlDate(item.updatedAt),
+          item.partnerId,
+          item.flatId,
+          item.sharePercent,
+          toSqlDate(item.effectiveFrom),
+          toSqlDate(item.effectiveUntil),
+          item.voided ? 1 : 0,
+        ],
+      );
+      continue;
+    }
+    const delta = changed(before.partnerAssignments ?? [], after.partnerAssignments ?? [], item.id);
+    if (!delta) continue;
+    await connection.execute(
+      `UPDATE partner_assignments
+       SET updatedAt = ?, partnerId = ?, flatId = ?, sharePercent = ?, effectiveFrom = ?, effectiveUntil = ?, voided = ?
+       WHERE id = ?`,
+      [
+        toSqlDate(item.updatedAt),
+        item.partnerId,
+        item.flatId,
+        item.sharePercent,
+        toSqlDate(item.effectiveFrom),
+        toSqlDate(item.effectiveUntil),
+        item.voided ? 1 : 0,
+        item.id,
+      ],
+    );
+  }
+
+  const beforePartnerPay = ids(before.partnerPayments ?? []);
+  for (const item of after.partnerPayments ?? []) {
+    if (!beforePartnerPay.has(item.id)) {
+      assertPlausibleAmount(item.amount, "Partner payment");
+      await connection.execute(
+        `INSERT INTO partner_payments (
+           id, createdAt, updatedAt, partnerId, profitYear, profitMonth, amount, method, paidAt, note, voided
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          toSqlDate(item.createdAt),
+          toSqlDate(item.updatedAt),
+          item.partnerId,
+          item.profitYear,
+          item.profitMonth,
+          item.amount,
+          item.method,
+          toSqlDate(item.paidAt),
+          item.note,
+          item.voided ? 1 : 0,
+        ],
+      );
+      continue;
+    }
+    const delta = changed(before.partnerPayments ?? [], after.partnerPayments ?? [], item.id);
+    if (!delta) continue;
+    assertPlausibleAmount(item.amount, "Partner payment");
+    await connection.execute(
+      `UPDATE partner_payments
+       SET updatedAt = ?, partnerId = ?, profitYear = ?, profitMonth = ?, amount = ?, method = ?, paidAt = ?, note = ?, voided = ?
+       WHERE id = ?`,
+      [
+        toSqlDate(item.updatedAt),
+        item.partnerId,
+        item.profitYear,
+        item.profitMonth,
+        item.amount,
+        item.method,
+        toSqlDate(item.paidAt),
+        item.note,
+        item.voided ? 1 : 0,
+        item.id,
+      ],
+    );
+  }
+
   const beforeProfit = ids(before.profitSharePayments ?? []);
   for (const item of after.profitSharePayments ?? []) {
     if (!beforeProfit.has(item.id)) {

@@ -5,27 +5,39 @@ import { Button } from "@/components/ui/Button";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { Field, Sheet, fieldClass } from "@/components/ui/Sheet";
 import { dateInputToISO, formatMonthLabel, karachiDateInput } from "@/lib/dates";
+import { listEarningMonths } from "@/lib/earnings";
 import { moneyInputFromSaved, parseFormAmount } from "@/lib/money";
 import { useLedger } from "@/lib/store";
-import { PAYMENT_METHODS, type PaymentMethod, type ProfitSharePayment } from "@/types";
+import { PAYMENT_METHODS, type PartnerPayment, type PaymentMethod } from "@/types";
 
 function paidAtFromDate(value: string): string {
   if (value === karachiDateInput()) return new Date().toISOString();
   return dateInputToISO(value);
 }
 
-export function KhizerPaymentSheet({
+export function PartnerPaymentSheet({
   year,
   month,
+  partnerId,
   existing,
   onClose,
 }: {
-  year: number;
-  month: number;
-  existing?: ProfitSharePayment | null;
+  year?: number;
+  month?: number;
+  partnerId?: string;
+  existing?: PartnerPayment | null;
   onClose: () => void;
 }) {
-  const { persist } = useLedger();
+  const { persist, state } = useLedger();
+  const months = useMemo(() => listEarningMonths(state), [state]);
+  const partners = useMemo(
+    () => state.partners.filter((item) => item.active || item.id === (existing?.partnerId ?? partnerId)),
+    [existing?.partnerId, partnerId, state.partners],
+  );
+  const [selectedPartner, setSelectedPartner] = useState(existing?.partnerId ?? partnerId ?? partners[0]?.id ?? "");
+  const [selectedMonth, setSelectedMonth] = useState(
+    `${existing?.profitYear ?? year ?? months[0]?.year}-${existing?.profitMonth ?? month ?? months[0]?.month}`,
+  );
   const [amountRaw, setAmountRaw] = useState(existing ? moneyInputFromSaved(existing.amount) : "");
   const [method, setMethod] = useState<PaymentMethod>(existing?.method ?? "CASH");
   const [date, setDate] = useState(existing ? karachiDateInput(new Date(existing.paidAt)) : karachiDateInput());
@@ -39,33 +51,43 @@ export function KhizerPaymentSheet({
       setError("Enter a valid amount.");
       return;
     }
+    if (!selectedPartner) {
+      setError("Choose a partner.");
+      return;
+    }
+    const [profitYear, profitMonth] = selectedMonth.split("-").map(Number);
+    if (!profitYear || !profitMonth) {
+      setError("Choose a settlement month.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       if (existing) {
         await persist({
-          type: "UPDATE_PROFIT_SHARE",
+          type: "UPDATE_PARTNER_PAYMENT",
           payload: {
             id: existing.id,
+            partnerId: selectedPartner,
             amount,
             method,
             paidAt: paidAtFromDate(date),
             note: note.trim() || null,
-            profitYear: year,
-            profitMonth: month,
+            profitYear,
+            profitMonth,
           },
         });
       } else {
         await persist({
-          type: "RECORD_PROFIT_SHARE",
+          type: "RECORD_PARTNER_PAYMENT",
           payload: {
-            profitYear: year,
-            profitMonth: month,
+            partnerId: selectedPartner,
+            profitYear,
+            profitMonth,
             amount,
             method,
             paidAt: paidAtFromDate(date),
             note: note.trim() || null,
-            partnerName: "Khizer",
           },
         });
       }
@@ -77,19 +99,34 @@ export function KhizerPaymentSheet({
     }
   }
 
-  const methods = useMemo(() => PAYMENT_METHODS, []);
-
   return (
-    <Sheet title={existing ? "Edit Khizer payment" : "Record Khizer payment"} onClose={onClose}>
+    <Sheet title={existing ? "Edit partner payment" : "Record partner payment"} onClose={onClose}>
       <div className="space-y-3">
-        <p className="text-sm font-normal text-muted">Profit month {formatMonthLabel(year, month)}</p>
+        <Field label="Partner">
+          <select className={fieldClass} value={selectedPartner} onChange={(event) => setSelectedPartner(event.target.value)}>
+            {partners.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Settlement month">
+          <select className={fieldClass} value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
+            {months.map((item) => (
+              <option key={`${item.year}-${item.month}`} value={`${item.year}-${item.month}`}>
+                {formatMonthLabel(item.year, item.month)}
+              </option>
+            ))}
+          </select>
+        </Field>
         <MoneyInput label="Amount paid" value={amountRaw} onChange={setAmountRaw} allowZero={false} />
         <Field label="Payment date">
           <input type="date" className={fieldClass} value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
         <Field label="Payment method">
           <select className={fieldClass} value={method} onChange={(event) => setMethod(event.target.value as PaymentMethod)}>
-            {methods.map((item) => (
+            {PAYMENT_METHODS.filter((item) => item.value !== "JAZZCASH").map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>

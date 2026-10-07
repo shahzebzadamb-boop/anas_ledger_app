@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AssignPartnerSheet } from "@/components/reports/AssignPartnerSheet";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Sheet } from "@/components/ui/Sheet";
@@ -36,6 +37,7 @@ export function ApartmentsSettings({
   const [editCode, setEditCode] = useState("");
   const [editDisplay, setEditDisplay] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+  const [assignFlatId, setAssignFlatId] = useState<string | null>(null);
   const active = useMemo(() => activeFlats(state), [state]);
   const archived = useMemo(() => archivedFlats(state), [state]);
   const editing = state.flats.find((flat) => flat.id === editId) ?? null;
@@ -100,12 +102,19 @@ export function ApartmentsSettings({
       </Button>
       <Card className="space-y-2">
         {active.map((flat) => (
-          <div key={flat.id} className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-b-0">
+          <div key={flat.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 last:border-b-0">
             <div className="min-w-0">
               <p className="text-sm font-medium">{flat.name}</p>
               <p className="text-xs font-normal text-muted">{flat.displayName ?? "Active"}</p>
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="min-h-11 text-sm font-medium text-secondary"
+                onClick={() => setAssignFlatId(flat.id)}
+              >
+                Partner
+              </button>
               <button
                 type="button"
                 className="min-h-11 text-sm font-medium text-secondary"
@@ -170,6 +179,8 @@ export function ApartmentsSettings({
           </Button>
         </Sheet>
       ) : null}
+
+      {assignFlatId ? <AssignPartnerSheet flatId={assignFlatId} onClose={() => setAssignFlatId(null)} /> : null}
 
       {editing ? (
         <Sheet title={`Edit ${editing.name}`} onClose={() => setEditId(null)}>
